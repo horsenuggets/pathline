@@ -52,9 +52,8 @@ function getGitBranch(cwd: string): string | undefined {
  * Replace the home directory prefix with ~ for display.
  */
 function toDisplayPath(rawPath: string): string {
-    const isWindows = process.platform === "win32"
-    const home = process.env.HOME || process.env.USERPROFILE || ""
-    if (!isWindows && home && rawPath !== home && rawPath.startsWith(home + "/")) {
+    const home = (process.env.HOME || process.env.USERPROFILE || "").replace(/\\/g, "/")
+    if (home && rawPath !== home && rawPath.startsWith(home + "/")) {
         return "~" + rawPath.slice(home.length)
     }
     return rawPath
@@ -119,14 +118,16 @@ function findVerifiedWorktrees(
  * The home directory prefix is automatically replaced with ~ for display.
  * If branch is not provided, it is computed via git.
  *
- * @param rawPath - The actual filesystem path
+ * @param rawPath - The actual filesystem path (default: process.cwd())
  * @param branch - The innermost git branch (computed if omitted)
  */
-export function buildPathline(rawPath: string, branch?: string): PathSegment[] {
-    const displayPath = toDisplayPath(rawPath)
+export function buildPathline(rawPath?: string, branch?: string): PathSegment[] {
+    rawPath = rawPath ?? process.cwd()
+    const normalizedRaw = rawPath.replace(/\\/g, "/")
+    const displayPath = toDisplayPath(normalizedRaw)
     const normalized = displayPath.replace(/\\/g, "/")
     const resolvedBranch = branch ?? getGitBranch(rawPath)
-    const verifiedSegments = findVerifiedWorktrees(displayPath, rawPath)
+    const verifiedSegments = findVerifiedWorktrees(displayPath, normalizedRaw)
 
     if (verifiedSegments.length === 0) {
         const segments: PathSegment[] = [{ text: displayPath, color: "path" }]

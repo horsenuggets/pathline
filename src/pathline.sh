@@ -43,7 +43,7 @@ pathline_get_path() {
 _pathline_split() {
     local str="$1"
     local IFS="/"
-    if [[ -n "$ZSH_VERSION" ]]; then
+    if [[ -n "${ZSH_VERSION:-}" ]]; then
         _pathline_parts=("${(@s:/:)str}")
     else
         read -ra _pathline_parts <<< "$str"
@@ -53,11 +53,27 @@ _pathline_split() {
 # Main render function. Outputs the path with ANSI color codes,
 # highlighting verified worktree names and appending the git branch
 # when appropriate.
+#
+# Usage: pathline_render [raw_path] [branch]
+#   raw_path - Filesystem path (default: $PWD)
+#   branch   - Git branch name (default: computed via git)
 pathline_render() {
+    local raw_path="${1:-$PWD}"
     local custom_path
-    custom_path=$(pathline_get_path)
-    local git_branch
-    git_branch=$(pathline_get_branch)
+    if [[ -n "${1:-}" ]]; then
+        # Derive display path from provided raw_path
+        local home_dir="$HOME"
+        if [[ "$raw_path" == "$home_dir"* ]]; then
+            custom_path="~${raw_path#"$home_dir"}"
+        else
+            custom_path="$raw_path"
+        fi
+    else
+        custom_path=$(pathline_get_path)
+    fi
+    # Normalize backslashes to forward slashes for matching
+    custom_path="${custom_path//\\//}"
+    local git_branch="${2:-$(cd "$raw_path" 2>/dev/null && pathline_get_branch)}"
     local marker="/.worktrees/"
     local remaining="$custom_path"
     local built=""

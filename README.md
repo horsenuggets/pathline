@@ -5,6 +5,7 @@ Git-aware path display with worktree highlighting.
 A shared library that provides git-aware path display logic for shell prompts
 and terminal UI status lines. It highlights worktree folder names when they
 match the git branch, supports arbitrary nesting depth, and handles submodules.
+Implementations are provided in TypeScript and shell (bash/zsh compatible).
 
 ## Features
 
@@ -18,9 +19,9 @@ match the git branch, supports arbitrary nesting depth, and handles submodules.
   worktree name
 - Works on macOS, Linux, and Windows
 
-## Example Output
+## Output
 
-Regular repository:
+Regular repository (branch shown in parentheses):
 
 ```
 ~/git/project (main)
@@ -71,56 +72,9 @@ Windows:  C:\Users\username
           shown in path color, no branch
 ```
 
-## Implementations
+Worktree where the folder name does not match the branch (no highlighting,
+branch shown normally):
 
-### TypeScript (`src/pathline.ts`)
-
-Returns an array of `PathSegment` objects with `text` and `color` fields.
-The `color` field is `"path"`, `"branch"`, or `"reset"` — the caller maps
-these to actual ANSI codes or UI styles.
-
-```typescript
-import { buildPathline } from "./src/pathline.js"
-
-const segments = buildPathline(
-    "~/git/project/.worktrees/feature/auth",
-    "/home/user/git/project/.worktrees/feature/auth",
-    "feature/auth",
-)
-// [
-//     { text: "~/git/project/.worktrees/", color: "path" },
-//     { text: "feature/auth", color: "branch" },
-// ]
 ```
-
-When the branch does not match the worktree folder:
-
-```typescript
-const segments = buildPathline(
-    "~/git/project/.worktrees/old-name",
-    "/home/user/git/project/.worktrees/old-name",
-    "bugfix/renamed",
-)
-// [
-//     { text: "~/git/project/.worktrees/old-name", color: "path" },
-//     { text: " (bugfix/renamed)", color: "branch" },
-// ]
-```
-
-### Shell (`src/pathline.sh`)
-
-Compatible with bash and zsh. Source the file and call `pathline_render`
-to output ANSI-colored text. Colors are configurable via environment
-variables.
-
-```bash
-source /path/to/pathline/src/pathline.sh
-pathline_render  # outputs colored path with worktree highlighting
-```
-
-Configure colors (hex values for truecolor terminals):
-
-```bash
-export PATHLINE_PATH_COLOR="cbd4fe"
-export PATHLINE_BRANCH_COLOR="b4a7d6"
+~/git/project/.worktrees/old-name (bugfix/renamed)
 ```

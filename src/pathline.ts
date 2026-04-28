@@ -14,7 +14,7 @@ import { existsSync } from "node:fs"
 
 export interface PathSegment {
     text: string
-    color: "path" | "branch" | "reset"
+    color: "path" | "branch"
 }
 
 /**
@@ -49,12 +49,24 @@ function getGitBranch(cwd: string): string | undefined {
 }
 
 /**
+ * Replace the home directory prefix with ~ for display.
+ */
+function toDisplayPath(rawPath: string): string {
+    const isWindows = process.platform === "win32"
+    const home = process.env.HOME || process.env.USERPROFILE || ""
+    if (!isWindows && home && rawPath !== home && rawPath.startsWith(home + "/")) {
+        return "~" + rawPath.slice(home.length)
+    }
+    return rawPath
+}
+
+/**
  * Find and verify all .worktrees/<name> segments in the path. For each
  * /.worktrees/ marker, probes git to find the worktree root and verifies
  * the folder name matches the branch (case-sensitive). Supports arbitrary
  * nesting depth (worktrees inside submodules inside worktrees, etc.).
  */
-export function findVerifiedWorktrees(
+function findVerifiedWorktrees(
     displayPath: string,
     rawPath: string,
 ): Array<{ nameStart: number; nameEnd: number }> {
@@ -71,9 +83,6 @@ export function findVerifiedWorktrees(
         const nameStart = markerIdx + marker.length
         if (nameStart >= normalized.length) break
 
-        // The worktree name can contain slashes (e.g. "feature/auth").
-        // Try progressively longer path segments until we find one that
-        // is a git worktree root with a matching branch name.
         const afterMarker = normalized.slice(nameStart)
         const parts = afterMarker.split("/")
         let matched = false
@@ -82,7 +91,6 @@ export function findVerifiedWorktrees(
             const candidateName = parts.slice(0, i).join("/")
             const candidateRawPath = rawPath.slice(0, nameStart + rawOffset + candidateName.length)
 
-            // Only check git branch if this is a worktree root (.git file exists)
             if (!existsSync(candidateRawPath + "/.git")) continue
             const branch = getGitBranch(candidateRawPath)
 
@@ -93,7 +101,6 @@ export function findVerifiedWorktrees(
                 break
             }
 
-            // If we got a branch but it doesn't match, stop probing
             if (branch) break
         }
 
@@ -106,30 +113,29 @@ export function findVerifiedWorktrees(
 }
 
 /**
- * Build a pathline: an array of colored segments representing a git-aware
- * path display with worktree highlighting.
+ * Build a pathline from a raw filesystem path. Returns an array of colored
+ * segments representing a git-aware path display with worktree highlighting.
  *
- * @param displayPath - The path as shown to the user (e.g. with ~ for home)
- * @param rawPath - The actual filesystem path (for git lookups)
- * @param branch - The innermost git branch (or undefined if not in a repo)
+ * The home directory prefix is automatically replaced with ~ for display.
+ * If branch is not provided, it is computed via git.
+ *
+ * @param rawPath - The actual filesystem path
+ * @param branch - The innermost git branch (computed if omitted)
  */
-export function buildPathline(
-    displayPath: string,
-    rawPath: string,
-    branch: string | undefined,
-): PathSegment[] {
+export function buildPathline(rawPath: string, branch?: string): PathSegment[] {
+    const displayPath = toDisplayPath(rawPath)
     const normalized = displayPath.replace(/\\/g, "/")
+    const resolvedBranch = branch ?? getGitBranch(rawPath)
     const verifiedSegments = findVerifiedWorktrees(displayPath, rawPath)
 
     if (verifiedSegments.length === 0) {
         const segments: PathSegment[] = [{ text: displayPath, color: "path" }]
-        if (branch) {
-            segments.push({ text: ` (${branch})`, color: "branch" })
+        if (resolvedBranch) {
+            segments.push({ text: ` (${resolvedBranch})`, color: "branch" })
         }
         return segments
     }
 
-    // Build path with highlighted verified worktree names
     const segments: PathSegment[] = []
     let pos = 0
 
@@ -145,16 +151,15 @@ export function buildPathline(
         segments.push({ text: displayPath.slice(pos), color: "path" })
     }
 
-    // Show branch in parens if the innermost repo's branch isn't a worktree name
     const lastVerified = verifiedSegments[verifiedSegments.length - 1]
     const innermostIsWorktree =
         lastVerified &&
-        branch &&
-        normalized.slice(lastVerified.nameStart, lastVerified.nameEnd) === branch &&
+        resolvedBranch &&
+        normalized.slice(lastVerified.nameStart, lastVerified.nameEnd) === resolvedBranch &&
         (normalized.length === lastVerified.nameEnd || normalized[lastVerified.nameEnd] === "/")
 
-    if (!innermostIsWorktree && branch) {
-        segments.push({ text: ` (${branch})`, color: "branch" })
+    if (!innermostIsWorktree && resolvedBranch) {
+        segments.push({ text: ` (${resolvedBranch})`, color: "branch" })
     }
 
     return segments

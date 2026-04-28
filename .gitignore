@@ -1,6 +1,14 @@
-node_modules/
+# Build output
 dist/
+node_modules/
+
+# Editor and environment
 .DS_Store
+.vscode/
+
+# Debug logs
 *.log
+
+# Worktrees
 .worktrees/
 CONTEXT.md

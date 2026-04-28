@@ -79,7 +79,7 @@ Returns an array of `PathSegment` objects with `text` and `color` fields.
 The `color` field is `"path"`, `"branch"`, or `"reset"` — the caller maps
 these to actual ANSI codes or UI styles.
 
-```ts
+```typescript
 import { buildPathline } from "./src/pathline.js"
 
 const segments = buildPathline(
@@ -95,7 +95,7 @@ const segments = buildPathline(
 
 When the branch does not match the worktree folder:
 
-```ts
+```typescript
 const segments = buildPathline(
     "~/git/project/.worktrees/old-name",
     "/home/user/git/project/.worktrees/old-name",
@@ -113,14 +113,14 @@ Compatible with bash and zsh. Source the file and call `pathline_render`
 to output ANSI-colored text. Colors are configurable via environment
 variables.
 
-```sh
+```bash
 source /path/to/pathline/src/pathline.sh
 pathline_render  # outputs colored path with worktree highlighting
 ```
 
 Configure colors (hex values for truecolor terminals):
 
-```sh
+```bash
 export PATHLINE_PATH_COLOR="cbd4fe"
 export PATHLINE_BRANCH_COLOR="b4a7d6"
 ```

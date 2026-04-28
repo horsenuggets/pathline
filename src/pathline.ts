@@ -2,15 +2,15 @@
 
 pathline
 
-Git-aware path display with worktree highlighting. Detects
-.worktrees/<name> segments in paths, verifies each against its
-repo's branch (case-sensitive), and returns colored segments for
-terminal rendering. Supports arbitrary nesting depth.
+Git-aware path display with worktree highlighting. Detects worktrees
+by checking for .git FILES (not directories) at path prefixes,
+verifies each against its repo's branch (case-sensitive), and returns
+colored segments for terminal rendering. Supports arbitrary nesting.
 
 */
 
 import { execSync } from "node:child_process"
-import { existsSync } from "node:fs"
+import { existsSync, statSync } from "node:fs"
 
 export interface PathSegment {
     text: string
@@ -60,51 +60,59 @@ function toDisplayPath(rawPath: string): string {
 }
 
 /**
- * Find and verify all .worktrees/<name> segments in the path. For each
- * /.worktrees/ marker, probes git to find the worktree root and verifies
- * the folder name matches the branch (case-sensitive). Supports arbitrary
- * nesting depth (worktrees inside submodules inside worktrees, etc.).
+ * Check if a path has a .git FILE (not directory), indicating a worktree.
  */
-function findVerifiedWorktrees(
+function isWorktreeRoot(path: string): boolean {
+    const gitPath = path + "/.git"
+    if (!existsSync(gitPath)) return false
+    try {
+        const stat = statSync(gitPath)
+        return stat.isFile()
+    } catch {
+        return false
+    }
+}
+
+/**
+ * Walk path prefixes to find worktree roots. For each prefix where .git
+ * is a file (not directory), get the git branch and check if trailing
+ * segments match the branch name (case-sensitive). Returns character
+ * positions in the display path for highlighting.
+ */
+function findWorktreeHighlights(
     displayPath: string,
     rawPath: string,
 ): Array<{ nameStart: number; nameEnd: number }> {
     const normalized = displayPath.replace(/\\/g, "/")
-    const marker = "/.worktrees/"
+    const segments = normalized.split("/")
     const rawOffset = rawPath.length - displayPath.length
     const results: Array<{ nameStart: number; nameEnd: number }> = []
 
-    let searchFrom = 0
-    while (true) {
-        const markerIdx = normalized.indexOf(marker, searchFrom)
-        if (markerIdx === -1) break
+    // Build prefixes segment by segment
+    for (let i = 1; i <= segments.length; i++) {
+        const prefix = segments.slice(0, i).join("/")
+        const rawPrefix = rawPath.slice(0, prefix.length + rawOffset)
 
-        const nameStart = markerIdx + marker.length
-        if (nameStart >= normalized.length) break
+        if (!isWorktreeRoot(rawPrefix)) continue
 
-        const afterMarker = normalized.slice(nameStart)
-        const parts = afterMarker.split("/")
-        let matched = false
+        const branch = getGitBranch(rawPrefix)
+        if (!branch) continue
 
-        for (let i = 1; i <= parts.length; i++) {
-            const candidateName = parts.slice(0, i).join("/")
-            const candidateRawPath = rawPath.slice(0, nameStart + rawOffset + candidateName.length)
+        // Check if trailing segments of the prefix match the branch
+        const branchParts = branch.split("/")
+        const branchPartCount = branchParts.length
 
-            if (!existsSync(candidateRawPath + "/.git")) continue
-            const branch = getGitBranch(candidateRawPath)
+        if (branchPartCount > i) continue
 
-            if (branch === candidateName) {
-                results.push({ nameStart, nameEnd: nameStart + candidateName.length })
-                searchFrom = nameStart + candidateName.length
-                matched = true
-                break
-            }
+        const trailingSegments = segments.slice(i - branchPartCount, i)
+        const trailing = trailingSegments.join("/")
 
-            if (branch) break
-        }
-
-        if (!matched) {
-            searchFrom = nameStart
+        if (trailing === branch) {
+            // Calculate character positions in the display path
+            const beforeTrailing = segments.slice(0, i - branchPartCount).join("/")
+            const nameStart = beforeTrailing.length > 0 ? beforeTrailing.length + 1 : 0
+            const nameEnd = nameStart + trailing.length
+            results.push({ nameStart, nameEnd })
         }
     }
 
@@ -127,7 +135,7 @@ export function buildPathline(rawPath?: string, branch?: string): PathSegment[] 
     const displayPath = toDisplayPath(normalizedRaw)
     const normalized = displayPath.replace(/\\/g, "/")
     const resolvedBranch = branch ?? getGitBranch(rawPath)
-    const verifiedSegments = findVerifiedWorktrees(displayPath, normalizedRaw)
+    const verifiedSegments = findWorktreeHighlights(displayPath, normalizedRaw)
 
     if (verifiedSegments.length === 0) {
         const segments: PathSegment[] = [{ text: displayPath, color: "path" }]

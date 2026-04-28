@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 # Simple test harness for pathline.sh
-# Sources the script and tests output with mocked git commands.
+# Sources the script and tests output with real git worktrees.
 
 set -euo pipefail
 
@@ -53,11 +53,18 @@ mkdir -p "$TEST_DIR/normalrepo"
 git -C "$TEST_DIR/normalrepo" init -q
 git -C "$TEST_DIR/normalrepo" commit --allow-empty -m "init" -q
 
-# Create a worktree structure with a real git worktree
+# Create a worktree in .worktrees/ (traditional location)
 mkdir -p "$TEST_DIR/repo"
 git -C "$TEST_DIR/repo" init -q -b main
 git -C "$TEST_DIR/repo" commit --allow-empty -m "init" -q
 git -C "$TEST_DIR/repo" worktree add "$TEST_DIR/repo/.worktrees/feature/login" -b "feature/login" -q 2>/dev/null
+
+# Create a worktree in an arbitrary location (NOT .worktrees/)
+git -C "$TEST_DIR/repo" worktree add "$TEST_DIR/arbitrary-wt" -b "arbitrary-wt" -q 2>/dev/null
+
+# Create a worktree with slashed branch in a non-.worktrees/ location
+mkdir -p "$TEST_DIR/other/fix"
+git -C "$TEST_DIR/repo" worktree add "$TEST_DIR/other/fix/bug" -b "fix/bug" -q 2>/dev/null
 
 # Source the script
 source "$SCRIPT_DIR/src/pathline.sh"
@@ -79,8 +86,8 @@ plain=$(strip_ansi "$output")
 assert_not_contains "no parens without branch" "$plain" "("
 rm -rf "$NOGIT_DIR"
 
-# Test 3: Worktree path where branch matches folder
-echo "Test 3: Worktree matching branch"
+# Test 3: Worktree in .worktrees/ where branch matches folder
+echo "Test 3: Worktree in .worktrees/ matching branch"
 output=$(pathline_render "$TEST_DIR/repo/.worktrees/feature/login" "feature/login")
 plain=$(strip_ansi "$output")
 assert_contains "shows worktree name" "$plain" "feature/login"
@@ -96,7 +103,6 @@ popd > /dev/null
 
 # Test 5: Backslash path normalization
 echo "Test 5: Backslash normalization"
-# Create a path string with backslashes (simulating Git Bash on Windows)
 output=$(pathline_render "$TEST_DIR/repo/.worktrees/feature/login" "feature/login")
 plain=$(strip_ansi "$output")
 assert_contains "handles forward slashes" "$plain" "feature/login"
@@ -108,6 +114,26 @@ output=$(pathline_render "$TEST_DIR/repo/.worktrees/feature/login/src" "feature/
 plain=$(strip_ansi "$output")
 assert_contains "shows subdir" "$plain" "/src"
 assert_contains "shows worktree name" "$plain" "feature/login"
+
+# Test 7: Worktree NOT in .worktrees/ folder (arbitrary location)
+echo "Test 7: Worktree in arbitrary location"
+output=$(pathline_render "$TEST_DIR/arbitrary-wt" "arbitrary-wt")
+plain=$(strip_ansi "$output")
+assert_contains "shows worktree name" "$plain" "arbitrary-wt"
+assert_not_contains "no parens when worktree matches" "$plain" "(arbitrary-wt)"
+
+# Test 8: Worktree with slashed branch in non-.worktrees/ location
+echo "Test 8: Slashed branch in arbitrary location"
+output=$(pathline_render "$TEST_DIR/other/fix/bug" "fix/bug")
+plain=$(strip_ansi "$output")
+assert_contains "shows branch segments" "$plain" "fix/bug"
+assert_not_contains "no parens when worktree matches" "$plain" "(fix/bug)"
+
+# Test 9: Regular clone (.git is directory) should NOT highlight
+echo "Test 9: Regular clone not highlighted"
+output=$(pathline_render "$TEST_DIR/repo" "main")
+plain=$(strip_ansi "$output")
+assert_contains "shows branch in parens for regular clone" "$plain" "(main)"
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"

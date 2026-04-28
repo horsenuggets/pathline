@@ -47,8 +47,6 @@ function Invoke-PathlineCapture {
     } else {
         (Invoke-Pathline -RawPath $RawPath) 6>&1
     }
-    # Write-Host goes to information stream (6) in PS5+, but also to host
-    # Use a workaround: capture via transcript or just test the functions directly
     return $output
 }
 
@@ -84,6 +82,37 @@ $colored = Script:ConvertTo-AnsiColor -Text "hello" -Hex "cbd4fe"
 Assert-Contains "has escape sequence" $colored "`e["
 Assert-Contains "has text" $colored "hello"
 Assert-Contains "has RGB values" $colored "38;2;203;212;254"
+
+# Test 5: Test-WorktreeRoot returns false for directories
+Write-Host "Test 5: Test-WorktreeRoot rejects directories"
+$tempDir = [System.IO.Path]::GetTempPath()
+$testDir = Join-Path $tempDir "pathline-test-$(Get-Random)"
+New-Item -ItemType Directory -Path $testDir -Force | Out-Null
+New-Item -ItemType Directory -Path (Join-Path $testDir ".git") -Force | Out-Null
+$result = Script:Test-WorktreeRoot -Path $testDir
+if (-not $result) {
+    $script:Pass++
+    Write-Host "  PASS: .git directory is not a worktree"
+} else {
+    $script:Fail++
+    Write-Host "  FAIL: .git directory should not be a worktree"
+}
+Remove-Item -Recurse -Force $testDir
+
+# Test 6: Test-WorktreeRoot returns true for files
+Write-Host "Test 6: Test-WorktreeRoot accepts files"
+$testDir2 = Join-Path $tempDir "pathline-test-$(Get-Random)"
+New-Item -ItemType Directory -Path $testDir2 -Force | Out-Null
+Set-Content -Path (Join-Path $testDir2 ".git") -Value "gitdir: /some/path"
+$result = Script:Test-WorktreeRoot -Path $testDir2
+if ($result) {
+    $script:Pass++
+    Write-Host "  PASS: .git file is a worktree"
+} else {
+    $script:Fail++
+    Write-Host "  FAIL: .git file should be a worktree"
+}
+Remove-Item -Recurse -Force $testDir2
 
 # Restore env
 $env:HOME = $null

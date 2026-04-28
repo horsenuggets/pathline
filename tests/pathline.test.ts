@@ -7,14 +7,16 @@ vi.mock("node:child_process", () => ({
 
 vi.mock("node:fs", () => ({
     existsSync: vi.fn(),
+    statSync: vi.fn(),
 }))
 
 import { execSync } from "node:child_process"
-import { existsSync } from "node:fs"
+import { existsSync, statSync } from "node:fs"
 import { buildPathline } from "../src/pathline"
 
 const mockExecSync = execSync as unknown as ReturnType<typeof vi.fn>
 const mockExistsSync = existsSync as unknown as ReturnType<typeof vi.fn>
+const mockStatSync = statSync as unknown as ReturnType<typeof vi.fn>
 
 function segmentsToText(segments: PathSegment[]): string {
     return segments.map((s) => s.text).join("")
@@ -22,6 +24,32 @@ function segmentsToText(segments: PathSegment[]): string {
 
 function segmentColors(segments: PathSegment[]): Array<"path" | "branch"> {
     return segments.map((s) => s.color)
+}
+
+/** Helper to mock a .git FILE (worktree) at a given path */
+function mockWorktreeAt(paths: string[]) {
+    mockExistsSync.mockImplementation((p: string) => {
+        return paths.includes(p)
+    })
+    mockStatSync.mockImplementation((p: string) => {
+        if (paths.includes(p)) {
+            return { isFile: () => true }
+        }
+        throw new Error("ENOENT")
+    })
+}
+
+/** Helper to mock a .git DIRECTORY (regular clone) at a given path */
+function mockRegularRepoAt(paths: string[]) {
+    mockExistsSync.mockImplementation((p: string) => {
+        return paths.includes(p)
+    })
+    mockStatSync.mockImplementation((p: string) => {
+        if (paths.includes(p)) {
+            return { isFile: () => false }
+        }
+        throw new Error("ENOENT")
+    })
 }
 
 beforeEach(() => {
@@ -43,10 +71,15 @@ describe("buildPathline", () => {
         expect(segmentColors(result)).toEqual(["path"])
     })
 
+    it("regular clone (.git is directory) does NOT highlight", () => {
+        mockRegularRepoAt(["/home/user/repo/.git"])
+        const result = buildPathline("/home/user/repo", "main")
+        expect(segmentsToText(result)).toBe("~/repo (main)")
+        expect(segmentColors(result)).toEqual(["path", "branch"])
+    })
+
     it("worktree where branch matches folder highlights name, no parens", () => {
-        mockExistsSync.mockImplementation((p: string) => {
-            return p === "/home/user/repo/.worktrees/feature/auth/.git"
-        })
+        mockWorktreeAt(["/home/user/repo/.worktrees/feature/auth/.git"])
         mockExecSync.mockImplementation((cmd: string, opts: { cwd?: string }) => {
             if (opts?.cwd === "/home/user/repo/.worktrees/feature/auth") {
                 return Buffer.from("feature/auth\n")
@@ -59,14 +92,45 @@ describe("buildPathline", () => {
         const branchSegments = result.filter((s) => s.color === "branch")
         expect(branchSegments).toHaveLength(1)
         expect(branchSegments[0].text).toBe("feature/auth")
-        // No parens when worktree matches branch
         expect(segmentsToText(result)).not.toContain("(")
     })
 
-    it("worktree where branch does not match shows full path + branch in parens", () => {
-        mockExistsSync.mockImplementation((p: string) => {
-            return p === "/home/user/repo/.worktrees/feature/auth/.git"
+    it("worktree NOT in .worktrees/ folder highlights correctly", () => {
+        mockWorktreeAt(["/home/user/repos/feature/auth/.git"])
+        mockExecSync.mockImplementation((cmd: string, opts: { cwd?: string }) => {
+            if (opts?.cwd === "/home/user/repos/feature/auth") {
+                return Buffer.from("feature/auth\n")
+            }
+            throw new Error("not a git repo")
         })
+
+        const result = buildPathline("/home/user/repos/feature/auth", "feature/auth")
+        expect(segmentsToText(result)).toBe("~/repos/feature/auth")
+        const branchSegments = result.filter((s) => s.color === "branch")
+        expect(branchSegments).toHaveLength(1)
+        expect(branchSegments[0].text).toBe("feature/auth")
+        expect(segmentsToText(result)).not.toContain("(")
+    })
+
+    it("worktree in arbitrary folder highlights correctly", () => {
+        mockWorktreeAt(["/tmp/my-worktree/.git"])
+        mockExecSync.mockImplementation((cmd: string, opts: { cwd?: string }) => {
+            if (opts?.cwd === "/tmp/my-worktree") {
+                return Buffer.from("my-worktree\n")
+            }
+            throw new Error("not a git repo")
+        })
+
+        process.env.HOME = "/home/user"
+        const result = buildPathline("/tmp/my-worktree", "my-worktree")
+        expect(segmentsToText(result)).toBe("/tmp/my-worktree")
+        const branchSegments = result.filter((s) => s.color === "branch")
+        expect(branchSegments).toHaveLength(1)
+        expect(branchSegments[0].text).toBe("my-worktree")
+    })
+
+    it("worktree where branch does not match shows full path + branch in parens", () => {
+        mockWorktreeAt(["/home/user/repo/.worktrees/feature/auth/.git"])
         mockExecSync.mockImplementation((cmd: string, opts: { cwd?: string }) => {
             if (opts?.cwd === "/home/user/repo/.worktrees/feature/auth") {
                 return Buffer.from("feature/auth\n")
@@ -85,6 +149,11 @@ describe("buildPathline", () => {
             if (p === "/home/user/repo/.worktrees/feature/outer/.git") return true
             if (p === "/home/user/repo/.worktrees/feature/outer/sub/.worktrees/fix/inner/.git") return true
             return false
+        })
+        mockStatSync.mockImplementation((p: string) => {
+            if (p === "/home/user/repo/.worktrees/feature/outer/.git") return { isFile: () => true }
+            if (p === "/home/user/repo/.worktrees/feature/outer/sub/.worktrees/fix/inner/.git") return { isFile: () => true }
+            throw new Error("ENOENT")
         })
         mockExecSync.mockImplementation((cmd: string, opts: { cwd?: string }) => {
             if (opts?.cwd === "/home/user/repo/.worktrees/feature/outer") {
@@ -107,9 +176,7 @@ describe("buildPathline", () => {
     })
 
     it("subdirectory inside worktree highlights name, remainder in path color", () => {
-        mockExistsSync.mockImplementation((p: string) => {
-            return p === "/home/user/repo/.worktrees/feature/auth/.git"
-        })
+        mockWorktreeAt(["/home/user/repo/.worktrees/feature/auth/.git"])
         mockExecSync.mockImplementation((cmd: string, opts: { cwd?: string }) => {
             if (opts?.cwd === "/home/user/repo/.worktrees/feature/auth") {
                 return Buffer.from("feature/auth\n")
@@ -125,16 +192,13 @@ describe("buildPathline", () => {
         const branchSegments = result.filter((s) => s.color === "branch")
         expect(branchSegments).toHaveLength(1)
         expect(branchSegments[0].text).toBe("feature/auth")
-        // Remainder after worktree name is path color
         const lastSegment = result[result.length - 1]
         expect(lastSegment.text).toBe("/src/components")
         expect(lastSegment.color).toBe("path")
     })
 
     it("submodule inside worktree shows outer worktree highlighted + inner branch in parens", () => {
-        mockExistsSync.mockImplementation((p: string) => {
-            return p === "/home/user/repo/.worktrees/feature/auth/.git"
-        })
+        mockWorktreeAt(["/home/user/repo/.worktrees/feature/auth/.git"])
         mockExecSync.mockImplementation((cmd: string, opts: { cwd?: string }) => {
             if (opts?.cwd === "/home/user/repo/.worktrees/feature/auth") {
                 return Buffer.from("feature/auth\n")
@@ -142,7 +206,6 @@ describe("buildPathline", () => {
             throw new Error("not a git repo")
         })
 
-        // The innermost branch is different (submodule has its own branch)
         const result = buildPathline(
             "/home/user/repo/.worktrees/feature/auth/libs/shared",
             "develop",
@@ -158,9 +221,7 @@ describe("buildPathline", () => {
         process.env.HOME = ""
         process.env.USERPROFILE = "C:\\Users\\dev"
 
-        mockExistsSync.mockImplementation((p: string) => {
-            return p === "C:/Users/dev/repo/.worktrees/feature/auth/.git"
-        })
+        mockWorktreeAt(["C:/Users/dev/repo/.worktrees/feature/auth/.git"])
         mockExecSync.mockImplementation((cmd: string, opts: { cwd?: string }) => {
             if (opts?.cwd === "C:/Users/dev/repo/.worktrees/feature/auth") {
                 return Buffer.from("feature/auth\n")
@@ -172,7 +233,6 @@ describe("buildPathline", () => {
             "C:\\Users\\dev\\repo\\.worktrees\\feature\\auth",
             "feature/auth",
         )
-        // Backslashes normalized, home substituted with ~
         expect(segmentsToText(result)).toBe("~/repo/.worktrees/feature/auth")
         const branchSegments = result.filter((s) => s.color === "branch")
         expect(branchSegments).toHaveLength(1)

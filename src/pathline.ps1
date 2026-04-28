@@ -1,9 +1,9 @@
 # pathline
 #
-# Git-aware path display with worktree highlighting. Detects
-# .worktrees/<name> segments in paths, verifies each against its
-# repo's branch (case-sensitive), and outputs ANSI-colored text.
-# Supports arbitrary nesting depth.
+# Git-aware path display with worktree highlighting. Detects worktrees
+# by checking for .git FILES (not directories) at path prefixes,
+# verifies each against its repo's branch (case-sensitive), and outputs
+# ANSI-colored text. Supports arbitrary nesting depth.
 #
 # Compatible with PowerShell 5.1+ and PowerShell Core 7+.
 # Dot-source this file and call Invoke-Pathline to get colored output.
@@ -45,6 +45,15 @@ function Script:Get-DisplayPath {
     return $RawPath
 }
 
+function Script:Test-WorktreeRoot {
+    param([string]$Path)
+    $gitPath = Join-Path $Path ".git"
+    if (Test-Path -Path $gitPath -PathType Leaf) {
+        return $true
+    }
+    return $false
+}
+
 function Invoke-Pathline {
     <#
     .SYNOPSIS
@@ -75,51 +84,46 @@ function Invoke-Pathline {
         $Branch = Script:Get-GitBranch -Path $RawPath
     }
 
-    # Find and verify worktree segments
-    $marker = "/.worktrees/"
+    # Walk path prefixes to find worktree roots
+    $segments = $normalized.Split("/")
+    $rawOffset = $normalizedRaw.Length - $displayPath.Length
     $verifiedSegments = @()
-    $searchFrom = 0
 
-    while ($true) {
-        $markerIdx = $normalized.IndexOf($marker, $searchFrom)
-        if ($markerIdx -eq -1) { break }
+    for ($i = 1; $i -le $segments.Length; $i++) {
+        $prefix = ($segments[0..($i - 1)]) -join "/"
+        $rawPrefix = $normalizedRaw.Substring(0, $prefix.Length + $rawOffset)
 
-        $nameStart = $markerIdx + $marker.Length
-        if ($nameStart -ge $normalized.Length) { break }
-
-        $afterMarker = $normalized.Substring($nameStart)
-        $parts = $afterMarker.Split("/")
-        $matched = $false
-
-        $rawOffset = $normalizedRaw.Length - $displayPath.Length
-
-        for ($i = 1; $i -le $parts.Length; $i++) {
-            $candidateName = ($parts[0..($i - 1)]) -join "/"
-            $candidateRawPath = $normalizedRaw.Substring(0, $nameStart + $rawOffset + $candidateName.Length)
-
-            # Convert back to native separators for filesystem access
-            $nativePath = if ($IsWindows -or (-not (Test-Path variable:IsWindows) -and $env:OS -eq "Windows_NT")) {
-                $candidateRawPath.Replace("/", "\")
-            } else {
-                $candidateRawPath
-            }
-
-            $gitFile = Join-Path $nativePath ".git"
-            if (-not (Test-Path $gitFile)) { continue }
-
-            $wtBranch = Script:Get-GitBranch -Path $nativePath
-            if ($wtBranch -ceq $candidateName) {
-                $verifiedSegments += @{ nameStart = $nameStart; nameEnd = $nameStart + $candidateName.Length }
-                $searchFrom = $nameStart + $candidateName.Length
-                $matched = $true
-                break
-            }
-
-            if ($wtBranch) { break }
+        # Convert to native path for filesystem check
+        $nativePath = if ($IsWindows -or (-not (Test-Path variable:IsWindows) -and $env:OS -eq "Windows_NT")) {
+            $rawPrefix.Replace("/", "\")
+        } else {
+            $rawPrefix
         }
 
-        if (-not $matched) {
-            $searchFrom = $nameStart
+        if (-not (Script:Test-WorktreeRoot -Path $nativePath)) { continue }
+
+        $wtBranch = Script:Get-GitBranch -Path $nativePath
+        if (-not $wtBranch) { continue }
+
+        # Check if trailing segments match the branch
+        $branchParts = $wtBranch.Split("/")
+        $branchPartCount = $branchParts.Length
+
+        if ($branchPartCount -gt $i) { continue }
+
+        $trailingSegments = $segments[($i - $branchPartCount)..($i - 1)]
+        $trailing = $trailingSegments -join "/"
+
+        if ($trailing -ceq $wtBranch) {
+            # Calculate character positions
+            if ($i - $branchPartCount -gt 0) {
+                $beforeTrailing = ($segments[0..($i - $branchPartCount - 1)]) -join "/"
+                $nameStart = $beforeTrailing.Length + 1
+            } else {
+                $nameStart = 0
+            }
+            $nameEnd = $nameStart + $trailing.Length
+            $verifiedSegments += @{ nameStart = $nameStart; nameEnd = $nameEnd }
         }
     }
 

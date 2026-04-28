@@ -2,10 +2,10 @@
 
 # pathline
 #
-# Git-aware path display with worktree highlighting. Detects
-# .worktrees/<name> segments in paths, verifies each against its
-# repo's branch (case-sensitive), and outputs ANSI-colored text.
-# Supports arbitrary nesting depth.
+# Git-aware path display with worktree highlighting. Detects worktrees
+# by checking for .git FILES (not directories) at path prefixes,
+# verifies each against its repo's branch (case-sensitive), and outputs
+# ANSI-colored text. Supports arbitrary nesting depth.
 #
 # Compatible with bash and zsh. Source this file and call
 # pathline_render to get colored path output.
@@ -39,15 +39,10 @@ pathline_get_path() {
     fi
 }
 
-# Split a string by "/" into an array. Works in both bash and zsh.
-_pathline_split() {
-    local str="$1"
-    local IFS="/"
-    if [[ -n "${ZSH_VERSION:-}" ]]; then
-        _pathline_parts=("${(@s:/:)str}")
-    else
-        read -ra _pathline_parts <<< "$str"
-    fi
+# Check if a path is a worktree root (.git is a file, not a directory)
+_pathline_is_worktree() {
+    local path="$1"
+    [[ -f "$path/.git" ]]
 }
 
 # Main render function. Outputs the path with ANSI color codes,
@@ -61,7 +56,6 @@ pathline_render() {
     local raw_path="${1:-$PWD}"
     local custom_path
     if [[ -n "${1:-}" ]]; then
-        # Derive display path from provided raw_path
         local home_dir="$HOME"
         if [[ "$raw_path" == "$home_dir"* ]]; then
             custom_path="~${raw_path#"$home_dir"}"
@@ -73,88 +67,112 @@ pathline_render() {
     fi
     # Normalize backslashes to forward slashes for matching
     custom_path="${custom_path//\\//}"
+    raw_path="${raw_path//\\//}"
     local git_branch="${2:-$(cd "$raw_path" 2>/dev/null && pathline_get_branch)}"
-    local marker="/.worktrees/"
-    local remaining="$custom_path"
-    local built=""
-    local raw_built=""
-    local any_match=false
-    local last_match_is_innermost=false
 
-    while [[ "$remaining" == *"$marker"* ]]; do
-        local before="${remaining%%"$marker"*}"
-        local after="${remaining#*"$marker"}"
+    # Split display path into segments
+    local IFS="/"
+    local -a path_segments
+    if [[ -n "${ZSH_VERSION:-}" ]]; then
+        path_segments=("${(@s:/:)custom_path}")
+    else
+        read -ra path_segments <<< "$custom_path"
+    fi
+    unset IFS
 
-        if [[ -z "$after" ]]; then
-            built+="$(pathline_color "${before}${marker}" "$PATHLINE_PATH_COLOR")"
-            raw_built+="${before}${marker}"
-            remaining=""
-            break
+    local raw_offset=$(( ${#raw_path} - ${#custom_path} ))
+
+    # Walk prefixes to find worktree roots
+    local -a highlight_starts=()
+    local -a highlight_ends=()
+    local prefix=""
+
+    for (( i=0; i<${#path_segments[@]}; i++ )); do
+        if [[ $i -eq 0 ]]; then
+            prefix="${path_segments[0]}"
+        else
+            prefix="${prefix}/${path_segments[$i]}"
         fi
 
-        # Try progressively longer segments to find the worktree root.
-        # Branch names can contain slashes (e.g. feature/auth).
-        local matched=false
-        _pathline_split "$after"
-        local candidate=""
+        # Compute the raw path for this prefix
+        local raw_prefix="${raw_path:0:$(( ${#prefix} + raw_offset ))}"
+        # Expand ~ for filesystem checks
+        local check_path="${raw_prefix/#\~/$HOME}"
 
-        for part in "${_pathline_parts[@]}"; do
-            if [[ -z "$candidate" ]]; then
-                candidate="$part"
+        if ! _pathline_is_worktree "$check_path"; then
+            continue
+        fi
+
+        # Get branch for this worktree
+        local wt_branch
+        wt_branch=$(cd "$check_path" 2>/dev/null && git symbolic-ref --short HEAD 2>/dev/null)
+        [[ -z "$wt_branch" ]] && continue
+
+        # Check if trailing segments match the branch
+        local branch_slash_count
+        branch_slash_count=$(echo "$wt_branch" | tr -cd '/' | wc -c)
+        branch_slash_count=$(( branch_slash_count + 1 ))  # number of parts
+
+        if (( branch_slash_count > i + 1 )); then
+            continue
+        fi
+
+        # Build trailing from segments
+        local trailing_start=$(( i + 1 - branch_slash_count ))
+        local trailing=""
+        for (( j=trailing_start; j<=i; j++ )); do
+            if [[ -z "$trailing" ]]; then
+                trailing="${path_segments[$j]}"
             else
-                candidate="${candidate}/${part}"
+                trailing="${trailing}/${path_segments[$j]}"
             fi
-
-            # Use raw_built (no ANSI codes) for filesystem path
-            local raw_candidate="${raw_built}${before}${marker}${candidate}"
-            raw_candidate="${raw_candidate/#\~/$HOME}"
-
-            # Only check git branch if this is actually a worktree root
-            [[ -e "$raw_candidate/.git" ]] || continue
-            local wt_branch
-            wt_branch=$(cd "$raw_candidate" 2>/dev/null && git symbolic-ref --short HEAD 2>/dev/null)
-
-            if [[ -n "$wt_branch" ]] && [[ "$wt_branch" == "$candidate" ]]; then
-                built+="$(pathline_color "${before}${marker}" "$PATHLINE_PATH_COLOR")"
-                built+="$(pathline_color "$candidate" "$PATHLINE_BRANCH_COLOR")"
-                raw_built+="${before}${marker}${candidate}"
-                remaining="${after#"$candidate"}"
-                any_match=true
-
-                if [[ "$wt_branch" == "$git_branch" ]]; then
-                    if [[ -z "$remaining" ]] || [[ "$remaining" == /* ]]; then
-                        last_match_is_innermost=true
-                    fi
-                else
-                    last_match_is_innermost=false
-                fi
-                matched=true
-                break
-            fi
-
-            if [[ -n "$wt_branch" ]]; then break; fi
         done
 
-        if [[ "$matched" == false ]]; then
-            built+="$(pathline_color "${before}${marker}" "$PATHLINE_PATH_COLOR")"
-            raw_built+="${before}${marker}"
-            remaining="$after"
+        if [[ "$trailing" == "$wt_branch" ]]; then
+            # Calculate character positions using prefix length
+            # prefix ends at the worktree root, trailing is the branch name at the end
+            local name_start=$(( ${#prefix} - ${#trailing} ))
+            local name_end=${#prefix}
+            highlight_starts+=("$name_start")
+            highlight_ends+=("$name_end")
         fi
     done
 
-    if [[ -n "$remaining" ]]; then
-        built+="$(pathline_color "$remaining" "$PATHLINE_PATH_COLOR")"
-    fi
-
     local output=""
-    if [[ "$any_match" == true ]]; then
-        output="$built"
-        if [[ "$last_match_is_innermost" == false ]] && [[ -n "$git_branch" ]]; then
+
+    if [[ ${#highlight_starts[@]} -eq 0 ]]; then
+        output="$(pathline_color "$custom_path" "$PATHLINE_PATH_COLOR")"
+        if [[ -n "$git_branch" ]]; then
             output+=" $(pathline_color "($git_branch)" "$PATHLINE_BRANCH_COLOR")"
         fi
     else
-        output="$(pathline_color "$custom_path" "$PATHLINE_PATH_COLOR")"
-        if [[ -n "$git_branch" ]]; then
+        local pos=0
+        for (( k=0; k<${#highlight_starts[@]}; k++ )); do
+            local hs="${highlight_starts[$k]}"
+            local he="${highlight_ends[$k]}"
+            if (( pos < hs )); then
+                output+="$(pathline_color "${custom_path:$pos:$((hs - pos))}" "$PATHLINE_PATH_COLOR")"
+            fi
+            output+="$(pathline_color "${custom_path:$hs:$((he - hs))}" "$PATHLINE_BRANCH_COLOR")"
+            pos=$he
+        done
+        if (( pos < ${#custom_path} )); then
+            output+="$(pathline_color "${custom_path:$pos}" "$PATHLINE_PATH_COLOR")"
+        fi
+
+        # Check if last highlight is the innermost worktree
+        local last_hs="${highlight_starts[${#highlight_starts[@]}-1]}"
+        local last_he="${highlight_ends[${#highlight_ends[@]}-1]}"
+        local last_name="${custom_path:$last_hs:$((last_he - last_hs))}"
+        local last_match_is_innermost=false
+
+        if [[ -n "$git_branch" ]] && [[ "$last_name" == "$git_branch" ]]; then
+            if [[ ${#custom_path} -eq $last_he ]] || [[ "${custom_path:$last_he:1}" == "/" ]]; then
+                last_match_is_innermost=true
+            fi
+        fi
+
+        if [[ "$last_match_is_innermost" == false ]] && [[ -n "$git_branch" ]]; then
             output+=" $(pathline_color "($git_branch)" "$PATHLINE_BRANCH_COLOR")"
         fi
     fi

@@ -21,17 +21,16 @@ Implementations are provided in TypeScript, shell (bash/zsh), and PowerShell.
 
 ## Colors
 
-Default colors are blue for paths and yellow for branches. All implementations
-support overriding the defaults:
+All implementations take the same four optional positional arguments:
 
-- **TypeScript** returns a baked ANSI string by default via `buildPathline()`.
-  Pass a `PathlineColors` object to override. Use `buildPathlineSegments()` for
-  raw segment arrays when custom rendering is needed.
-- **Shell** uses env vars `PATHLINE_PATH_COLOR` and `PATHLINE_BRANCH_COLOR`
-  (hex values for truecolor terminals, defaults: `cbd4fe` / `b4a7d6`).
-- **PowerShell** uses `-PathColor` and `-BranchColor` parameters on
-  `Invoke-Pathline`, falling back to `PATHLINE_PATH_COLOR` /
-  `PATHLINE_BRANCH_COLOR` env vars, then the same hex defaults.
+```
+buildPathline(rawPath?, branch?, pathColor?, branchColor?)
+```
+
+The 3rd and 4th arguments override colors. Defaults are blue/yellow ANSI escapes
+in TypeScript (`\x1b[0;34m` / `\x1b[0;33m`) and hex values in shell/PowerShell
+(`cbd4fe` / `b4a7d6`). Use `buildPathlineSegments(rawPath?, branch?)` in
+TypeScript for raw segment arrays when custom rendering is needed.
 
 ## Output
 

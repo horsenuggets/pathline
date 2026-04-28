@@ -78,25 +78,19 @@ describe("buildPathline (ANSI string output)", () => {
     })
 
     it("custom colors override defaults", () => {
-        const result = buildPathline("/home/user/projects/myapp", "main", {
-            path: "\x1b[0;32m",
-            branch: "\x1b[0;31m",
-            reset: "\x1b[0m",
-        })
+        const result = buildPathline("/home/user/projects/myapp", "main", "\x1b[0;32m", "\x1b[0;31m")
         expect(result).toContain("\x1b[0;32m~/projects/myapp")
         expect(result).toContain("\x1b[0;31m (main)")
         expect(result).not.toContain("\x1b[0;34m")
         expect(result).not.toContain("\x1b[0;33m")
     })
 
-    it("partial color override only changes specified colors", () => {
-        const result = buildPathline("/home/user/projects/myapp", "main", {
-            branch: "\x1b[0;35m",
-        })
-        // Path still uses default blue
-        expect(result).toContain("\x1b[0;34m~/projects/myapp")
-        // Branch uses custom purple
-        expect(result).toContain("\x1b[0;35m (main)")
+    it("partial color override only changes path color", () => {
+        const result = buildPathline("/home/user/projects/myapp", "main", "\x1b[0;32m")
+        // Path uses custom green
+        expect(result).toContain("\x1b[0;32m~/projects/myapp")
+        // Branch still uses default yellow
+        expect(result).toContain("\x1b[0;33m (main)")
     })
 
     it("worktree path produces correct ANSI output", () => {

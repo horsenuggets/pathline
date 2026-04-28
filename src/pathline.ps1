@@ -8,10 +8,6 @@
 # Compatible with PowerShell 5.1+ and PowerShell Core 7+.
 # Dot-source this file and call Invoke-Pathline to get colored output.
 
-# Default colors (overridable via env vars or function parameters)
-$Script:PathlinePathColor = if ($env:PATHLINE_PATH_COLOR) { $env:PATHLINE_PATH_COLOR } else { "cbd4fe" }
-$Script:PathlineBranchColor = if ($env:PATHLINE_BRANCH_COLOR) { $env:PATHLINE_BRANCH_COLOR } else { "b4a7d6" }
-
 function Script:ConvertTo-AnsiColor {
     param(
         [string]$Text,
@@ -71,10 +67,15 @@ function Invoke-Pathline {
         [Parameter(Position = 1)]
         [string]$Branch,
 
-        [string]$PathColor = $Script:PathlinePathColor,
+        [Parameter(Position = 2)]
+        [string]$PathColor,
 
-        [string]$BranchColor = $Script:PathlineBranchColor
+        [Parameter(Position = 3)]
+        [string]$BranchColor
     )
+
+    if (-not $PathColor) { $PathColor = "cbd4fe" }
+    if (-not $BranchColor) { $BranchColor = "b4a7d6" }
 
     if (-not $RawPath) {
         $RawPath = (Get-Location).Path
@@ -133,26 +134,24 @@ function Invoke-Pathline {
     }
 
     # Build output
-    $pathColor = $PathColor
-    $branchColor = $BranchColor
     $output = ""
 
     if ($verifiedSegments.Count -eq 0) {
-        $output = Script:ConvertTo-AnsiColor -Text $displayPath -Hex $pathColor
+        $output = Script:ConvertTo-AnsiColor -Text $displayPath -Hex $PathColor
         if ($Branch) {
-            $output += " " + (Script:ConvertTo-AnsiColor -Text "($Branch)" -Hex $branchColor)
+            $output += " " + (Script:ConvertTo-AnsiColor -Text "($Branch)" -Hex $BranchColor)
         }
     } else {
         $pos = 0
         foreach ($seg in $verifiedSegments) {
             if ($pos -lt $seg.nameStart) {
-                $output += Script:ConvertTo-AnsiColor -Text $displayPath.Substring($pos, $seg.nameStart - $pos) -Hex $pathColor
+                $output += Script:ConvertTo-AnsiColor -Text $displayPath.Substring($pos, $seg.nameStart - $pos) -Hex $PathColor
             }
-            $output += Script:ConvertTo-AnsiColor -Text $displayPath.Substring($seg.nameStart, $seg.nameEnd - $seg.nameStart) -Hex $branchColor
+            $output += Script:ConvertTo-AnsiColor -Text $displayPath.Substring($seg.nameStart, $seg.nameEnd - $seg.nameStart) -Hex $BranchColor
             $pos = $seg.nameEnd
         }
         if ($pos -lt $displayPath.Length) {
-            $output += Script:ConvertTo-AnsiColor -Text $displayPath.Substring($pos) -Hex $pathColor
+            $output += Script:ConvertTo-AnsiColor -Text $displayPath.Substring($pos) -Hex $PathColor
         }
 
         # Determine if last verified segment is the innermost worktree
@@ -163,7 +162,7 @@ function Invoke-Pathline {
         )
 
         if (-not $innermostIsWorktree -and $Branch) {
-            $output += " " + (Script:ConvertTo-AnsiColor -Text "($Branch)" -Hex $branchColor)
+            $output += " " + (Script:ConvertTo-AnsiColor -Text "($Branch)" -Hex $BranchColor)
         }
     }
 

@@ -17,17 +17,9 @@ export interface PathSegment {
     color: "path" | "branch"
 }
 
-export interface PathlineColors {
-    path: string
-    branch: string
-    reset: string
-}
-
-const DEFAULT_COLORS: PathlineColors = {
-    path: "\x1b[0;34m",
-    branch: "\x1b[0;33m",
-    reset: "\x1b[0m",
-}
+const DEFAULT_PATH_COLOR = "\x1b[0;34m"
+const DEFAULT_BRANCH_COLOR = "\x1b[0;33m"
+const RESET = "\x1b[0m"
 
 /**
  * Get the git branch for a directory, or undefined if not in a git repo.
@@ -140,18 +132,25 @@ function findWorktreeHighlights(
  *
  * @param rawPath - The actual filesystem path (default: process.cwd())
  * @param branch - The innermost git branch (computed if omitted)
- * @param colors - Optional color overrides (ANSI escape sequences)
+ * @param pathColor - ANSI escape for path segments (default: blue)
+ * @param branchColor - ANSI escape for branch segments (default: yellow)
  */
-export function buildPathline(rawPath?: string, branch?: string, colors?: Partial<PathlineColors>): string {
+export function buildPathline(
+    rawPath?: string,
+    branch?: string,
+    pathColor?: string,
+    branchColor?: string,
+): string {
     const segments = buildPathlineSegments(rawPath, branch)
-    const resolved: PathlineColors = { ...DEFAULT_COLORS, ...colors }
+    const resolvedPath = pathColor ?? DEFAULT_PATH_COLOR
+    const resolvedBranch = branchColor ?? DEFAULT_BRANCH_COLOR
 
     let result = ""
     for (const seg of segments) {
-        const color = seg.color === "path" ? resolved.path : resolved.branch
+        const color = seg.color === "path" ? resolvedPath : resolvedBranch
         result += color + seg.text
     }
-    result += resolved.reset
+    result += RESET
 
     return result
 }

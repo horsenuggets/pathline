@@ -10,10 +10,6 @@
 # Compatible with bash and zsh. Source this file and call
 # pathline_render to get colored path output.
 
-# Colors (hex values for truecolor terminals)
-PATHLINE_PATH_COLOR="${PATHLINE_PATH_COLOR:-cbd4fe}"
-PATHLINE_BRANCH_COLOR="${PATHLINE_BRANCH_COLOR:-b4a7d6}"
-
 pathline_color() {
     local text="$1"
     local hex="${2#"#"}"
@@ -49,11 +45,15 @@ _pathline_is_worktree() {
 # highlighting verified worktree names and appending the git branch
 # when appropriate.
 #
-# Usage: pathline_render [raw_path] [branch]
-#   raw_path - Filesystem path (default: $PWD)
-#   branch   - Git branch name (default: computed via git)
+# Usage: pathline_render [raw_path] [branch] [path_color] [branch_color]
+#   raw_path     - Filesystem path (default: $PWD)
+#   branch       - Git branch name (default: computed via git)
+#   path_color   - Hex color for path segments (default: cbd4fe)
+#   branch_color - Hex color for branch segments (default: b4a7d6)
 pathline_render() {
     local raw_path="${1:-$PWD}"
+    local path_color="${3:-cbd4fe}"
+    local branch_color="${4:-b4a7d6}"
     local custom_path
     if [[ -n "${1:-}" ]]; then
         local home_dir="$HOME"
@@ -141,9 +141,9 @@ pathline_render() {
     local output=""
 
     if [[ ${#highlight_starts[@]} -eq 0 ]]; then
-        output="$(pathline_color "$custom_path" "$PATHLINE_PATH_COLOR")"
+        output="$(pathline_color "$custom_path" "$path_color")"
         if [[ -n "$git_branch" ]]; then
-            output+=" $(pathline_color "($git_branch)" "$PATHLINE_BRANCH_COLOR")"
+            output+=" $(pathline_color "($git_branch)" "$branch_color")"
         fi
     else
         local pos=0
@@ -151,13 +151,13 @@ pathline_render() {
             local hs="${highlight_starts[$k]}"
             local he="${highlight_ends[$k]}"
             if (( pos < hs )); then
-                output+="$(pathline_color "${custom_path:$pos:$((hs - pos))}" "$PATHLINE_PATH_COLOR")"
+                output+="$(pathline_color "${custom_path:$pos:$((hs - pos))}" "$path_color")"
             fi
-            output+="$(pathline_color "${custom_path:$hs:$((he - hs))}" "$PATHLINE_BRANCH_COLOR")"
+            output+="$(pathline_color "${custom_path:$hs:$((he - hs))}" "$branch_color")"
             pos=$he
         done
         if (( pos < ${#custom_path} )); then
-            output+="$(pathline_color "${custom_path:$pos}" "$PATHLINE_PATH_COLOR")"
+            output+="$(pathline_color "${custom_path:$pos}" "$path_color")"
         fi
 
         # Check if last highlight is the innermost worktree
@@ -173,7 +173,7 @@ pathline_render() {
         fi
 
         if [[ "$last_match_is_innermost" == false ]] && [[ -n "$git_branch" ]]; then
-            output+=" $(pathline_color "($git_branch)" "$PATHLINE_BRANCH_COLOR")"
+            output+=" $(pathline_color "($git_branch)" "$branch_color")"
         fi
     fi
 

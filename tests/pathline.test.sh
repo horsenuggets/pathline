@@ -129,8 +129,21 @@ plain=$(strip_ansi "$output")
 assert_contains "shows branch segments" "$plain" "fix/bug"
 assert_not_contains "no parens when worktree matches" "$plain" "(fix/bug)"
 
-# Test 9: Regular clone (.git is directory) should NOT highlight
-echo "Test 9: Regular clone not highlighted"
+# Test 9: Custom color args
+echo "Test 9: Custom color args"
+output=$(pathline_render "$TEST_DIR/normalrepo" "main" "ff0000" "00ff00")
+assert_contains "output contains ANSI escape" "$output" "[38;2;"
+plain=$(strip_ansi "$output")
+assert_contains "shows branch in parens" "$plain" "(main)"
+
+# Test 10: Default colors without explicit args
+echo "Test 10: Default colors without explicit args"
+output=$(pathline_render "$TEST_DIR/normalrepo" "main")
+assert_contains "default path color has cbd4fe RGB" "$output" "203;212;254"
+assert_contains "default branch color has b4a7d6 RGB" "$output" "180;167;214"
+
+# Test 11: Regular clone (.git is directory) should NOT highlight
+echo "Test 11: Regular clone not highlighted"
 output=$(pathline_render "$TEST_DIR/repo" "main")
 plain=$(strip_ansi "$output")
 assert_contains "shows branch in parens for regular clone" "$plain" "(main)"

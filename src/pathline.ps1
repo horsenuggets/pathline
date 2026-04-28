@@ -8,8 +8,9 @@
 # Compatible with PowerShell 5.1+ and PowerShell Core 7+.
 # Dot-source this file and call Invoke-Pathline to get colored output.
 
-$Script:PathlinePathColor = "cbd4fe"
-$Script:PathlineBranchColor = "b4a7d6"
+# Default colors (overridable via env vars or function parameters)
+$Script:PathlinePathColor = if ($env:PATHLINE_PATH_COLOR) { $env:PATHLINE_PATH_COLOR } else { "cbd4fe" }
+$Script:PathlineBranchColor = if ($env:PATHLINE_BRANCH_COLOR) { $env:PATHLINE_BRANCH_COLOR } else { "b4a7d6" }
 
 function Script:ConvertTo-AnsiColor {
     param(
@@ -68,7 +69,11 @@ function Invoke-Pathline {
         [string]$RawPath,
 
         [Parameter(Position = 1)]
-        [string]$Branch
+        [string]$Branch,
+
+        [string]$PathColor = $Script:PathlinePathColor,
+
+        [string]$BranchColor = $Script:PathlineBranchColor
     )
 
     if (-not $RawPath) {
@@ -128,8 +133,8 @@ function Invoke-Pathline {
     }
 
     # Build output
-    $pathColor = $Script:PathlinePathColor
-    $branchColor = $Script:PathlineBranchColor
+    $pathColor = $PathColor
+    $branchColor = $BranchColor
     $output = ""
 
     if ($verifiedSegments.Count -eq 0) {

@@ -5,7 +5,7 @@ Git-aware path display with worktree highlighting.
 A shared library that provides git-aware path display logic for shell prompts
 and terminal UI status lines. It highlights worktree folder names when they
 match the git branch, supports arbitrary nesting depth, and handles submodules.
-Implementations are provided in TypeScript and shell (bash/zsh compatible).
+Implementations are provided in TypeScript, shell (bash/zsh), and PowerShell.
 
 ## Features
 
@@ -18,6 +18,20 @@ Implementations are provided in TypeScript and shell (bash/zsh compatible).
 - Omits the branch suffix when the innermost branch is already visible as a
   worktree name
 - Works on macOS, Linux, and Windows
+
+## Colors
+
+Default colors are blue for paths and yellow for branches. All implementations
+support overriding the defaults:
+
+- **TypeScript** returns a baked ANSI string by default via `buildPathline()`.
+  Pass a `PathlineColors` object to override. Use `buildPathlineSegments()` for
+  raw segment arrays when custom rendering is needed.
+- **Shell** uses env vars `PATHLINE_PATH_COLOR` and `PATHLINE_BRANCH_COLOR`
+  (hex values for truecolor terminals, defaults: `cbd4fe` / `b4a7d6`).
+- **PowerShell** uses `-PathColor` and `-BranchColor` parameters on
+  `Invoke-Pathline`, falling back to `PATHLINE_PATH_COLOR` /
+  `PATHLINE_BRANCH_COLOR` env vars, then the same hex defaults.
 
 ## Output
 

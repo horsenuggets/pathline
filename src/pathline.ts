@@ -17,6 +17,18 @@ export interface PathSegment {
     color: "path" | "branch"
 }
 
+export interface PathlineColors {
+    path: string
+    branch: string
+    reset: string
+}
+
+const DEFAULT_COLORS: PathlineColors = {
+    path: "\x1b[0;34m",
+    branch: "\x1b[0;33m",
+    reset: "\x1b[0m",
+}
+
 /**
  * Get the git branch for a directory, or undefined if not in a git repo.
  */
@@ -120,6 +132,31 @@ function findWorktreeHighlights(
 }
 
 /**
+ * Build a pathline from a raw filesystem path. Returns a baked ANSI string
+ * ready to print, with path segments in blue and branch segments in yellow.
+ *
+ * The home directory prefix is automatically replaced with ~ for display.
+ * If branch is not provided, it is computed via git.
+ *
+ * @param rawPath - The actual filesystem path (default: process.cwd())
+ * @param branch - The innermost git branch (computed if omitted)
+ * @param colors - Optional color overrides (ANSI escape sequences)
+ */
+export function buildPathline(rawPath?: string, branch?: string, colors?: Partial<PathlineColors>): string {
+    const segments = buildPathlineSegments(rawPath, branch)
+    const resolved: PathlineColors = { ...DEFAULT_COLORS, ...colors }
+
+    let result = ""
+    for (const seg of segments) {
+        const color = seg.color === "path" ? resolved.path : resolved.branch
+        result += color + seg.text
+    }
+    result += resolved.reset
+
+    return result
+}
+
+/**
  * Build a pathline from a raw filesystem path. Returns an array of colored
  * segments representing a git-aware path display with worktree highlighting.
  *
@@ -129,7 +166,7 @@ function findWorktreeHighlights(
  * @param rawPath - The actual filesystem path (default: process.cwd())
  * @param branch - The innermost git branch (computed if omitted)
  */
-export function buildPathline(rawPath?: string, branch?: string): PathSegment[] {
+export function buildPathlineSegments(rawPath?: string, branch?: string): PathSegment[] {
     rawPath = rawPath ?? process.cwd()
     const normalizedRaw = rawPath.replace(/\\/g, "/")
     const displayPath = toDisplayPath(normalizedRaw)

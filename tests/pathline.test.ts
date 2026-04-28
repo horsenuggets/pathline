@@ -12,7 +12,7 @@ vi.mock("node:fs", () => ({
 
 import { execSync } from "node:child_process"
 import { existsSync, statSync } from "node:fs"
-import { buildPathline } from "../src/pathline"
+import { buildPathline, buildPathlineSegments } from "../src/pathline"
 
 const mockExecSync = execSync as unknown as ReturnType<typeof vi.fn>
 const mockExistsSync = existsSync as unknown as ReturnType<typeof vi.fn>
@@ -58,22 +58,84 @@ beforeEach(() => {
     delete process.env.USERPROFILE
 })
 
-describe("buildPathline", () => {
-    it("normal repo path shows branch in parens", () => {
+describe("buildPathline (ANSI string output)", () => {
+    it("returns a string with default ANSI color codes", () => {
         const result = buildPathline("/home/user/projects/myapp", "main")
+        expect(typeof result).toBe("string")
+        expect(result).toContain("\x1b[0;34m")
+        expect(result).toContain("\x1b[0;33m")
+        expect(result).toContain("\x1b[0m")
+    })
+
+    it("default colors produce expected ANSI codes", () => {
+        const result = buildPathline("/home/user/projects/myapp", "main")
+        // Path in blue
+        expect(result).toContain("\x1b[0;34m~/projects/myapp")
+        // Branch in yellow
+        expect(result).toContain("\x1b[0;33m (main)")
+        // Ends with reset
+        expect(result.endsWith("\x1b[0m")).toBe(true)
+    })
+
+    it("custom colors override defaults", () => {
+        const result = buildPathline("/home/user/projects/myapp", "main", {
+            path: "\x1b[0;32m",
+            branch: "\x1b[0;31m",
+            reset: "\x1b[0m",
+        })
+        expect(result).toContain("\x1b[0;32m~/projects/myapp")
+        expect(result).toContain("\x1b[0;31m (main)")
+        expect(result).not.toContain("\x1b[0;34m")
+        expect(result).not.toContain("\x1b[0;33m")
+    })
+
+    it("partial color override only changes specified colors", () => {
+        const result = buildPathline("/home/user/projects/myapp", "main", {
+            branch: "\x1b[0;35m",
+        })
+        // Path still uses default blue
+        expect(result).toContain("\x1b[0;34m~/projects/myapp")
+        // Branch uses custom purple
+        expect(result).toContain("\x1b[0;35m (main)")
+    })
+
+    it("worktree path produces correct ANSI output", () => {
+        mockWorktreeAt(["/home/user/repo/.worktrees/feature/auth/.git"])
+        mockExecSync.mockImplementation((cmd: string, opts: { cwd?: string }) => {
+            if (opts?.cwd === "/home/user/repo/.worktrees/feature/auth") {
+                return Buffer.from("feature/auth\n")
+            }
+            throw new Error("not a git repo")
+        })
+
+        const result = buildPathline("/home/user/repo/.worktrees/feature/auth", "feature/auth")
+        expect(result).toContain("\x1b[0;34m~/repo/.worktrees/")
+        expect(result).toContain("\x1b[0;33mfeature/auth")
+        expect(result).not.toContain("(feature/auth)")
+    })
+
+    it("no branch shows just path color and reset", () => {
+        const result = buildPathline("/home/user/documents", undefined)
+        expect(result).toBe("\x1b[0;34m~/documents\x1b[0m")
+    })
+})
+
+describe("buildPathlineSegments (segment array output)", () => {
+    it("normal repo path shows branch in parens", () => {
+        const result = buildPathlineSegments("/home/user/projects/myapp", "main")
         expect(segmentsToText(result)).toBe("~/projects/myapp (main)")
         expect(segmentColors(result)).toEqual(["path", "branch"])
     })
 
     it("no git repo shows just the path", () => {
-        const result = buildPathline("/home/user/documents", undefined)
+        const result = buildPathlineSegments("/home/user/documents", undefined)
         expect(segmentsToText(result)).toBe("~/documents")
         expect(segmentColors(result)).toEqual(["path"])
     })
 
     it("regular clone (.git is directory) does NOT highlight", () => {
         mockRegularRepoAt(["/home/user/repo/.git"])
-        const result = buildPathline("/home/user/repo", "main")
+        const result = buildPathlineSegments("/home/user/repo", "main")
         expect(segmentsToText(result)).toBe("~/repo (main)")
         expect(segmentColors(result)).toEqual(["path", "branch"])
     })
@@ -87,7 +149,7 @@ describe("buildPathline", () => {
             throw new Error("not a git repo")
         })
 
-        const result = buildPathline("/home/user/repo/.worktrees/feature/auth", "feature/auth")
+        const result = buildPathlineSegments("/home/user/repo/.worktrees/feature/auth", "feature/auth")
         expect(segmentsToText(result)).toBe("~/repo/.worktrees/feature/auth")
         const branchSegments = result.filter((s) => s.color === "branch")
         expect(branchSegments).toHaveLength(1)
@@ -104,7 +166,7 @@ describe("buildPathline", () => {
             throw new Error("not a git repo")
         })
 
-        const result = buildPathline("/home/user/repos/feature/auth", "feature/auth")
+        const result = buildPathlineSegments("/home/user/repos/feature/auth", "feature/auth")
         expect(segmentsToText(result)).toBe("~/repos/feature/auth")
         const branchSegments = result.filter((s) => s.color === "branch")
         expect(branchSegments).toHaveLength(1)
@@ -122,7 +184,7 @@ describe("buildPathline", () => {
         })
 
         process.env.HOME = "/home/user"
-        const result = buildPathline("/tmp/my-worktree", "my-worktree")
+        const result = buildPathlineSegments("/tmp/my-worktree", "my-worktree")
         expect(segmentsToText(result)).toBe("/tmp/my-worktree")
         const branchSegments = result.filter((s) => s.color === "branch")
         expect(branchSegments).toHaveLength(1)
@@ -138,7 +200,7 @@ describe("buildPathline", () => {
             throw new Error("not a git repo")
         })
 
-        const result = buildPathline("/home/user/repo/.worktrees/feature/auth", "bugfix/other")
+        const result = buildPathlineSegments("/home/user/repo/.worktrees/feature/auth", "bugfix/other")
         expect(segmentsToText(result)).toBe("~/repo/.worktrees/feature/auth (bugfix/other)")
         const branchSegments = result.filter((s) => s.color === "branch")
         expect(branchSegments.length).toBeGreaterThanOrEqual(2) // highlighted name + parens
@@ -165,7 +227,7 @@ describe("buildPathline", () => {
             throw new Error("not a git repo")
         })
 
-        const result = buildPathline(
+        const result = buildPathlineSegments(
             "/home/user/repo/.worktrees/feature/outer/sub/.worktrees/fix/inner",
             "fix/inner",
         )
@@ -184,7 +246,7 @@ describe("buildPathline", () => {
             throw new Error("not a git repo")
         })
 
-        const result = buildPathline(
+        const result = buildPathlineSegments(
             "/home/user/repo/.worktrees/feature/auth/src/components",
             "feature/auth",
         )
@@ -206,7 +268,7 @@ describe("buildPathline", () => {
             throw new Error("not a git repo")
         })
 
-        const result = buildPathline(
+        const result = buildPathlineSegments(
             "/home/user/repo/.worktrees/feature/auth/libs/shared",
             "develop",
         )
@@ -229,7 +291,7 @@ describe("buildPathline", () => {
             throw new Error("not a git repo")
         })
 
-        const result = buildPathline(
+        const result = buildPathlineSegments(
             "C:\\Users\\dev\\repo\\.worktrees\\feature\\auth",
             "feature/auth",
         )
@@ -240,13 +302,13 @@ describe("buildPathline", () => {
     })
 
     it("home directory substitution with ~", () => {
-        const result = buildPathline("/home/user/projects/foo", "main")
+        const result = buildPathlineSegments("/home/user/projects/foo", "main")
         expect(segmentsToText(result)).toMatch(/^~\//)
         expect(segmentsToText(result)).not.toContain("/home/user")
     })
 
     it("path outside home directory is shown as-is", () => {
-        const result = buildPathline("/opt/projects/foo", "main")
+        const result = buildPathlineSegments("/opt/projects/foo", "main")
         expect(segmentsToText(result)).toBe("/opt/projects/foo (main)")
     })
 
@@ -254,7 +316,7 @@ describe("buildPathline", () => {
         const originalCwd = process.cwd
         process.cwd = () => "/home/user/test-dir"
         try {
-            const result = buildPathline(undefined, "main")
+            const result = buildPathlineSegments(undefined, "main")
             expect(segmentsToText(result)).toBe("~/test-dir (main)")
         } finally {
             process.cwd = originalCwd

@@ -52,8 +52,6 @@ function Invoke-PathlineCapture {
 
 Write-Host "=== PowerShell tests ==="
 
-# Test the helper functions directly since Write-Host is hard to capture
-
 # Test 1: Get-DisplayPath with home substitution
 Write-Host "Test 1: Display path with home substitution"
 $env:HOME = "/home/user"
@@ -113,6 +111,59 @@ if ($result) {
     Write-Host "  FAIL: .git file should be a worktree"
 }
 Remove-Item -Recurse -Force $testDir2
+
+# Test 7: Normal path (no worktree) shows branch in parens
+Write-Host "Test 7: Normal path shows branch in parens"
+$tempRepo = Join-Path $tempDir "pathline-test-repo-$(Get-Random)"
+New-Item -ItemType Directory -Path $tempRepo -Force | Out-Null
+git -C $tempRepo init -q -b main 2>$null
+git -C $tempRepo commit --allow-empty -m "init" -q 2>$null
+$env:HOME = $tempDir
+$output = & { Invoke-Pathline -RawPath $tempRepo -Branch "main" } 6>&1
+$plain = Strip-Ansi "$output"
+Assert-Contains "shows branch in parens" "$plain" "(main)"
+Remove-Item -Recurse -Force $tempRepo
+
+# Test 8: Worktree where branch matches folder highlights the name
+Write-Host "Test 8: Worktree branch matches folder"
+$tempRepo2 = Join-Path $tempDir "pathline-test-wt-$(Get-Random)"
+New-Item -ItemType Directory -Path $tempRepo2 -Force | Out-Null
+git -C $tempRepo2 init -q -b main 2>$null
+git -C $tempRepo2 commit --allow-empty -m "init" -q 2>$null
+$wtPath = Join-Path $tempRepo2 ".worktrees/feature/login"
+git -C $tempRepo2 worktree add $wtPath -b "feature/login" -q 2>$null
+$env:HOME = $tempDir
+$output = & { Invoke-Pathline -RawPath $wtPath -Branch "feature/login" } 6>&1
+$plain = Strip-Ansi "$output"
+Assert-Contains "shows worktree name" "$plain" "feature/login"
+Assert-NotContains "no parens when branch matches" "$plain" "(feature/login)"
+Remove-Item -Recurse -Force $tempRepo2
+
+# Test 9: Worktree where branch doesn't match shows parens
+Write-Host "Test 9: Worktree branch mismatch shows parens"
+$tempRepo3 = Join-Path $tempDir "pathline-test-mismatch-$(Get-Random)"
+New-Item -ItemType Directory -Path $tempRepo3 -Force | Out-Null
+git -C $tempRepo3 init -q -b main 2>$null
+git -C $tempRepo3 commit --allow-empty -m "init" -q 2>$null
+$wtPath3 = Join-Path $tempRepo3 ".worktrees/feature/login"
+git -C $tempRepo3 worktree add $wtPath3 -b "feature/login" -q 2>$null
+$env:HOME = $tempDir
+$output = & { Invoke-Pathline -RawPath $wtPath3 -Branch "bugfix/other" } 6>&1
+$plain = Strip-Ansi "$output"
+Assert-Contains "shows different branch in parens" "$plain" "(bugfix/other)"
+Remove-Item -Recurse -Force $tempRepo3
+
+# Test 10: Color output contains ANSI codes
+Write-Host "Test 10: Color output contains ANSI codes"
+$env:HOME = "/home/user"
+$colored = Script:ConvertTo-AnsiColor -Text "test" -Hex "b4a7d6"
+Assert-Contains "has ANSI escape" $colored "`e[38;2;"
+Assert-Contains "has RGB for branch color" $colored "180;167;214"
+
+# Test 11: Color parameters are overridable
+Write-Host "Test 11: Color parameters are overridable"
+$customColor = Script:ConvertTo-AnsiColor -Text "custom" -Hex "ff0000"
+Assert-Contains "custom color has red RGB" $customColor "255;0;0"
 
 # Restore env
 $env:HOME = $null

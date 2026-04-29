@@ -91,3 +91,14 @@ branch shown normally):
 ```
 ~/git/project/.worktrees/old-name (bugfix/renamed)
 ```
+
+## Testing
+
+All tests run via vitest:
+
+```bash
+npm test
+```
+
+TypeScript unit tests run directly. Shell (bash/zsh) and PowerShell tests run
+inside Docker containers, so Docker Desktop must be running for the full suite.

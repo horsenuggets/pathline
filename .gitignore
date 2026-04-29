@@ -9,6 +9,12 @@ node_modules/
 # Debug logs
 *.log
 
+# Terraform local state (use remote state for teams)
+Terraform/.terraform/
+Terraform/.terraform.lock.hcl
+Terraform/terraform.tfstate
+Terraform/terraform.tfstate.backup
+
 # Worktrees
 .worktrees/
 CONTEXT.md

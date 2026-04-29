@@ -4,14 +4,14 @@ import { describe, it, expect } from "vitest"
 const image = "pathline-powershell-test"
 const cwd = process.cwd()
 
-execSync(`docker build -t ${image} -f docker/powershell.Dockerfile .`, {
+execSync(`docker build --platform linux/amd64 -t ${image} -f docker/powershell.Dockerfile .`, {
     cwd,
     stdio: "pipe",
     timeout: 120_000,
 })
 
 const output = execSync(
-    `docker run --rm -v "${cwd}/src:/pathline/src:ro" -v "${cwd}/tests:/pathline/tests:ro" ${image} pwsh /pathline/tests/powershell-docker.ps1`,
+    `docker run --rm --platform linux/amd64 -v "${cwd}/src:/pathline/src:ro" -v "${cwd}/tests:/pathline/tests:ro" ${image} pwsh /pathline/tests/powershell-docker.ps1`,
     { encoding: "utf-8", timeout: 60_000 },
 )
 

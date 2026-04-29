@@ -33,9 +33,9 @@ function Script:Get-GitBranch {
 
 function Script:Get-DisplayPath {
     param([string]$RawPath)
-    $home = if ($env:HOME) { $env:HOME } else { $env:USERPROFILE }
-    if (-not $home) { return $RawPath }
-    $normalizedHome = $home.Replace("\", "/")
+    $homeDir = if ($env:HOME) { $env:HOME } else { $env:USERPROFILE }
+    if (-not $homeDir) { return $RawPath }
+    $normalizedHome = $homeDir.Replace("\", "/")
     if ($RawPath -ne $normalizedHome -and $RawPath.StartsWith("$normalizedHome/")) {
         return "~" + $RawPath.Substring($normalizedHome.Length)
     }
@@ -106,7 +106,7 @@ function Invoke-Pathline {
             $rawPrefix
         }
 
-        if (-not (Script:Test-WorktreeRoot -Path $nativePath)) { continue }
+        if (-not $nativePath -or -not (Script:Test-WorktreeRoot -Path $nativePath)) { continue }
 
         $wtBranch = Script:Get-GitBranch -Path $nativePath
         if (-not $wtBranch) { continue }

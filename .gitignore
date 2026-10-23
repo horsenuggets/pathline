@@ -16,5 +16,6 @@ Terraform/terraform.tfstate
 Terraform/terraform.tfstate.backup
 
 # Worktrees
-.worktrees/
+/.worktrees/
+/.wt/
 CONTEXT.md

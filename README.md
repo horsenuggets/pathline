@@ -29,7 +29,8 @@ buildPathline(rawPath?, branch?, pathColor?, branchColor?)
 
 The 3rd and 4th arguments override colors. Defaults are blue/yellow ANSI escapes
 in TypeScript (`\x1b[0;34m` / `\x1b[0;33m`) and hex values in shell/PowerShell
-(`cbd4fe` / `b4a7d6`). Use `buildPathlineSegments(rawPath?, branch?)` in
+(`cbd4fe` / `b4a7d6`). The shell version also accepts ANSI escapes such as
+`\033[0;34m` in place of hex values, for terminals without truecolor support. Use `buildPathlineSegments(rawPath?, branch?)` in
 TypeScript for raw segment arrays when custom rendering is needed.
 
 ## Output

@@ -10,9 +10,15 @@
 # Compatible with bash and zsh. Source this file and call
 # pathline_render to get colored path output.
 
+# Color text with either a hex color (e.g., "cbd4fe" or "#cbd4fe") or an ANSI escape
+# sequence (e.g., "\033[0;34m") for terminals without truecolor support.
 pathline_color() {
     local text="$1"
     local hex="${2#"#"}"
+    if [[ ! "$hex" =~ ^[0-9a-fA-F]{6}$ ]]; then
+        echo -n "${2}${text}"
+        return
+    fi
     local r=$(printf "%d" "0x${hex:0:2}")
     local g=$(printf "%d" "0x${hex:2:2}")
     local b=$(printf "%d" "0x${hex:4:2}")
@@ -48,8 +54,8 @@ _pathline_is_worktree() {
 # Usage: pathline_render [raw_path] [branch] [path_color] [branch_color]
 #   raw_path     - Filesystem path (default: $PWD)
 #   branch       - Git branch name (default: computed via git)
-#   path_color   - Hex color for path segments (default: cbd4fe)
-#   branch_color - Hex color for branch segments (default: b4a7d6)
+#   path_color   - Hex color or ANSI escape for path segments (default: cbd4fe)
+#   branch_color - Hex color or ANSI escape for branch segments (default: b4a7d6)
 pathline_render() {
     local raw_path="${1:-$PWD}"
     local path_color="${3:-cbd4fe}"

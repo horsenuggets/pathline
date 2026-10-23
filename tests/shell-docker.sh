@@ -22,11 +22,13 @@ fail() {
     local name="$1"
     local expected="$2"
     local actual="$3"
-    # Escape backslashes and double quotes for JSON
+    # Escape backslashes, double quotes, and ANSI escape characters for JSON
     expected="${expected//\\/\\\\}"
     expected="${expected//\"/\\\"}"
+    expected="${expected//$'\033'/\\u001b}"
     actual="${actual//\\/\\\\}"
     actual="${actual//\"/\\\"}"
+    actual="${actual//$'\033'/\\u001b}"
     echo "{\"name\": \"$name\", \"pass\": false, \"expected\": \"$expected\", \"actual\": \"$actual\"}"
 }
 
@@ -140,6 +142,17 @@ assert_contains "dark colors: branch has 050505 RGB" "$output" "5;5;5"
 output=$(pathline_render "$TEST_DIR/normalrepo" "main" "fefefe" "f0f0f0")
 assert_contains "light colors: path has fefefe RGB" "$output" "254;254;254"
 assert_contains "light colors: branch has f0f0f0 RGB" "$output" "240;240;240"
+
+# Test: Hex colors with a leading hash
+output=$(pathline_render "$TEST_DIR/normalrepo" "main" "#ff5500" "#00ff88")
+assert_contains "hash colors: path has ff5500 RGB" "$output" "255;85;0"
+assert_contains "hash colors: branch has 00ff88 RGB" "$output" "0;255;136"
+
+# Test: ANSI escape colors for terminals without truecolor
+output=$(pathline_render "$TEST_DIR/normalrepo" "main" '\033[0;34m' '\033[0;33m')
+assert_contains "ansi colors: path uses the escape as is" "$output" $'\033[0;34m'
+assert_contains "ansi colors: branch uses the escape as is" "$output" $'\033[0;33m(main)'
+assert_not_contains "ansi colors: no truecolor codes" "$output" "38;2;"
 
 # Test: Default colors
 output=$(pathline_render "$TEST_DIR/normalrepo" "main")

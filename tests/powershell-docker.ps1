@@ -137,12 +137,19 @@ Remove-Item -Recurse -Force $fileTest
 $output = Invoke-PathlineCapture -RawPath $normalRepo -Branch "main"
 $plain = Strip-Ansi "$output"
 Assert-Contains -Name "normal path: shows branch in parens" -Haystack $plain -Needle "(main)"
+Assert-Contains -Name "normal path: ends with a slash" -Haystack $plain -Needle "normalrepo/ (main)"
+
+# Test: Root directory keeps a single slash
+$output = Invoke-PathlineCapture -RawPath "/"
+$plain = Strip-Ansi "$output"
+Assert-NotContains -Name "root: no double slash" -Haystack $plain -Needle "//"
 
 # Test: Worktree where branch matches folder
 $output = Invoke-PathlineCapture -RawPath $wtPath -Branch "feature/login"
 $plain = Strip-Ansi "$output"
 Assert-Contains -Name "worktree match: shows name" -Haystack $plain -Needle "feature/login"
 Assert-NotContains -Name "worktree match: no parens" -Haystack $plain -Needle "(feature/login)"
+Assert-Contains -Name "worktree match: ends with a slash" -Haystack $plain -Needle "feature/login/"
 
 # Test: Worktree branch mismatch shows parens
 $output = Invoke-PathlineCapture -RawPath $wtPath -Branch "bugfix/other"

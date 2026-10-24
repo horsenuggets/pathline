@@ -133,6 +133,11 @@ function Invoke-Pathline {
         }
     }
 
+    # Directories always end with a slash. Add it after finding highlights, so that the
+    # path splits into the same segments as before.
+    if (-not $displayPath.EndsWith("/")) { $displayPath += "/" }
+    if (-not $normalized.EndsWith("/")) { $normalized += "/" }
+
     # Build output
     $output = ""
 
@@ -158,7 +163,7 @@ function Invoke-Pathline {
         $lastSeg = $verifiedSegments[$verifiedSegments.Count - 1]
         $lastName = $normalized.Substring($lastSeg.nameStart, $lastSeg.nameEnd - $lastSeg.nameStart)
         $innermostIsWorktree = $Branch -and ($lastName -ceq $Branch) -and (
-            $normalized.Length -eq $lastSeg.nameEnd -or $normalized[$lastSeg.nameEnd] -eq "/"
+            $normalized[$lastSeg.nameEnd] -eq "/"
         )
 
         if (-not $innermostIsWorktree -and $Branch) {

@@ -168,10 +168,13 @@ export function buildPathline(
 export function buildPathlineSegments(rawPath?: string, branch?: string): PathSegment[] {
     rawPath = rawPath ?? process.cwd()
     const normalizedRaw = rawPath.replace(/\\/g, "/")
-    const displayPath = toDisplayPath(normalizedRaw)
-    const normalized = displayPath.replace(/\\/g, "/")
+    let displayPath = toDisplayPath(normalizedRaw)
     const resolvedBranch = branch ?? getGitBranch(rawPath)
     const verifiedSegments = findWorktreeHighlights(displayPath, normalizedRaw)
+
+    // Directories always end with a slash. Add it after finding highlights, so that the
+    // path splits into the same segments as before.
+    if (!displayPath.endsWith("/")) displayPath += "/"
 
     if (verifiedSegments.length === 0) {
         const segments: PathSegment[] = [{ text: displayPath, color: "path" }]
@@ -200,8 +203,8 @@ export function buildPathlineSegments(rawPath?: string, branch?: string): PathSe
     const innermostIsWorktree =
         lastVerified &&
         resolvedBranch &&
-        normalized.slice(lastVerified.nameStart, lastVerified.nameEnd) === resolvedBranch &&
-        (normalized.length === lastVerified.nameEnd || normalized[lastVerified.nameEnd] === "/")
+        displayPath.slice(lastVerified.nameStart, lastVerified.nameEnd) === resolvedBranch &&
+        displayPath[lastVerified.nameEnd] === "/"
 
     if (!innermostIsWorktree && resolvedBranch) {
         segments.push({ text: ` (${resolvedBranch})`, color: "branch" })

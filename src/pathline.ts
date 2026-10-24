@@ -57,7 +57,7 @@ function getGitBranch(cwd: string): string | undefined {
  */
 function toDisplayPath(rawPath: string): string {
     const home = (process.env.HOME || process.env.USERPROFILE || "").replace(/\\/g, "/")
-    if (home && rawPath !== home && rawPath.startsWith(home + "/")) {
+    if (home && (rawPath === home || rawPath.startsWith(home + "/"))) {
         return "~" + rawPath.slice(home.length)
     }
     return rawPath

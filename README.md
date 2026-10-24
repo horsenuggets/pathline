@@ -83,10 +83,8 @@ Nested worktrees at arbitrary depth (all matching names highlighted):
 Home directory without a git repo:
 
 ```
-macOS:    /Users/username/
-Linux:    /home/username/
-Windows:  C:\Users\username\
-          shown in path color, no branch
+~/
+shown in path color, no branch
 ```
 
 Worktree where the folder name does not match the branch (no highlighting,

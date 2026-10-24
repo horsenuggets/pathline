@@ -110,27 +110,27 @@ describe("buildPathline (ANSI string output)", () => {
 
     it("no branch shows just path color and reset", () => {
         const result = buildPathline("/home/user/documents", undefined)
-        expect(result).toBe("\x1b[0;34m~/documents\x1b[0m")
+        expect(result).toBe("\x1b[0;34m~/documents/\x1b[0m")
     })
 })
 
 describe("buildPathlineSegments (segment array output)", () => {
     it("normal repo path shows branch in parens", () => {
         const result = buildPathlineSegments("/home/user/projects/myapp", "main")
-        expect(segmentsToText(result)).toBe("~/projects/myapp (main)")
+        expect(segmentsToText(result)).toBe("~/projects/myapp/ (main)")
         expect(segmentColors(result)).toEqual(["path", "branch"])
     })
 
     it("no git repo shows just the path", () => {
         const result = buildPathlineSegments("/home/user/documents", undefined)
-        expect(segmentsToText(result)).toBe("~/documents")
+        expect(segmentsToText(result)).toBe("~/documents/")
         expect(segmentColors(result)).toEqual(["path"])
     })
 
     it("regular clone (.git is directory) does NOT highlight", () => {
         mockRegularRepoAt(["/home/user/repo/.git"])
         const result = buildPathlineSegments("/home/user/repo", "main")
-        expect(segmentsToText(result)).toBe("~/repo (main)")
+        expect(segmentsToText(result)).toBe("~/repo/ (main)")
         expect(segmentColors(result)).toEqual(["path", "branch"])
     })
 
@@ -144,7 +144,7 @@ describe("buildPathlineSegments (segment array output)", () => {
         })
 
         const result = buildPathlineSegments("/home/user/repo/.worktrees/feature/auth", "feature/auth")
-        expect(segmentsToText(result)).toBe("~/repo/.worktrees/feature/auth")
+        expect(segmentsToText(result)).toBe("~/repo/.worktrees/feature/auth/")
         const branchSegments = result.filter((s) => s.color === "branch")
         expect(branchSegments).toHaveLength(1)
         expect(branchSegments[0].text).toBe("feature/auth")
@@ -161,7 +161,7 @@ describe("buildPathlineSegments (segment array output)", () => {
         })
 
         const result = buildPathlineSegments("/home/user/repos/feature/auth", "feature/auth")
-        expect(segmentsToText(result)).toBe("~/repos/feature/auth")
+        expect(segmentsToText(result)).toBe("~/repos/feature/auth/")
         const branchSegments = result.filter((s) => s.color === "branch")
         expect(branchSegments).toHaveLength(1)
         expect(branchSegments[0].text).toBe("feature/auth")
@@ -179,7 +179,7 @@ describe("buildPathlineSegments (segment array output)", () => {
 
         process.env.HOME = "/home/user"
         const result = buildPathlineSegments("/tmp/my-worktree", "my-worktree")
-        expect(segmentsToText(result)).toBe("/tmp/my-worktree")
+        expect(segmentsToText(result)).toBe("/tmp/my-worktree/")
         const branchSegments = result.filter((s) => s.color === "branch")
         expect(branchSegments).toHaveLength(1)
         expect(branchSegments[0].text).toBe("my-worktree")
@@ -195,7 +195,7 @@ describe("buildPathlineSegments (segment array output)", () => {
         })
 
         const result = buildPathlineSegments("/home/user/repo/.worktrees/feature/auth", "bugfix/other")
-        expect(segmentsToText(result)).toBe("~/repo/.worktrees/feature/auth (bugfix/other)")
+        expect(segmentsToText(result)).toBe("~/repo/.worktrees/feature/auth/ (bugfix/other)")
         const branchSegments = result.filter((s) => s.color === "branch")
         expect(branchSegments.length).toBeGreaterThanOrEqual(2) // highlighted name + parens
     })
@@ -244,12 +244,12 @@ describe("buildPathlineSegments (segment array output)", () => {
             "/home/user/repo/.worktrees/feature/auth/src/components",
             "feature/auth",
         )
-        expect(segmentsToText(result)).toBe("~/repo/.worktrees/feature/auth/src/components")
+        expect(segmentsToText(result)).toBe("~/repo/.worktrees/feature/auth/src/components/")
         const branchSegments = result.filter((s) => s.color === "branch")
         expect(branchSegments).toHaveLength(1)
         expect(branchSegments[0].text).toBe("feature/auth")
         const lastSegment = result[result.length - 1]
-        expect(lastSegment.text).toBe("/src/components")
+        expect(lastSegment.text).toBe("/src/components/")
         expect(lastSegment.color).toBe("path")
     })
 
@@ -266,7 +266,7 @@ describe("buildPathlineSegments (segment array output)", () => {
             "/home/user/repo/.worktrees/feature/auth/libs/shared",
             "develop",
         )
-        expect(segmentsToText(result)).toBe("~/repo/.worktrees/feature/auth/libs/shared (develop)")
+        expect(segmentsToText(result)).toBe("~/repo/.worktrees/feature/auth/libs/shared/ (develop)")
         const branchSegments = result.filter((s) => s.color === "branch")
         expect(branchSegments.length).toBeGreaterThanOrEqual(2)
         expect(branchSegments[0].text).toBe("feature/auth")
@@ -289,7 +289,7 @@ describe("buildPathlineSegments (segment array output)", () => {
             "C:\\Users\\dev\\repo\\.worktrees\\feature\\auth",
             "feature/auth",
         )
-        expect(segmentsToText(result)).toBe("~/repo/.worktrees/feature/auth")
+        expect(segmentsToText(result)).toBe("~/repo/.worktrees/feature/auth/")
         const branchSegments = result.filter((s) => s.color === "branch")
         expect(branchSegments).toHaveLength(1)
         expect(branchSegments[0].text).toBe("feature/auth")
@@ -303,7 +303,25 @@ describe("buildPathlineSegments (segment array output)", () => {
 
     it("path outside home directory is shown as-is", () => {
         const result = buildPathlineSegments("/opt/projects/foo", "main")
-        expect(segmentsToText(result)).toBe("/opt/projects/foo (main)")
+        expect(segmentsToText(result)).toBe("/opt/projects/foo/ (main)")
+    })
+
+    it("root directory keeps a single slash", () => {
+        const result = buildPathlineSegments("/", undefined)
+        expect(segmentsToText(result)).toBe("/")
+    })
+
+    it("worktree root ends with a slash in path color", () => {
+        mockWorktreeAt(["/home/user/repo/.worktrees/feature/auth/.git"])
+        mockExecSync.mockImplementation((cmd: string, opts: { cwd?: string }) => {
+            if (opts?.cwd === "/home/user/repo/.worktrees/feature/auth") {
+                return Buffer.from("feature/auth\n")
+            }
+            throw new Error("not a git repo")
+        })
+
+        const result = buildPathlineSegments("/home/user/repo/.worktrees/feature/auth", "feature/auth")
+        expect(result[result.length - 1]).toEqual({ text: "/", color: "path" })
     })
 
     it("uses process.cwd() when rawPath is omitted", () => {
@@ -311,7 +329,7 @@ describe("buildPathlineSegments (segment array output)", () => {
         process.cwd = () => "/home/user/test-dir"
         try {
             const result = buildPathlineSegments(undefined, "main")
-            expect(segmentsToText(result)).toBe("~/test-dir (main)")
+            expect(segmentsToText(result)).toBe("~/test-dir/ (main)")
         } finally {
             process.cwd = originalCwd
         }

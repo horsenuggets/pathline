@@ -144,6 +144,10 @@ pathline_render() {
         fi
     done
 
+    # Directories always end with a slash. Add it after finding highlights, so that the
+    # path splits into the same segments as before.
+    [[ "$custom_path" != */ ]] && custom_path+="/"
+
     local output=""
 
     if [[ ${#highlight_starts[@]} -eq 0 ]]; then
@@ -173,7 +177,7 @@ pathline_render() {
         local last_match_is_innermost=false
 
         if [[ -n "$git_branch" ]] && [[ "$last_name" == "$git_branch" ]]; then
-            if [[ ${#custom_path} -eq $last_he ]] || [[ "${custom_path:$last_he:1}" == "/" ]]; then
+            if [[ "${custom_path:$last_he:1}" == "/" ]]; then
                 last_match_is_innermost=true
             fi
         fi

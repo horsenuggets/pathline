@@ -93,19 +93,32 @@ output=$(pathline_render "$TEST_DIR/normalrepo" "main")
 plain=$(strip_ansi "$output")
 assert_contains "normal repo: shows branch in parens" "$plain" "(main)"
 assert_contains "normal repo: shows path" "$plain" "normalrepo"
+assert_contains "normal repo: path ends with a slash" "$plain" "normalrepo/ (main)"
 
 # Test: No git branch
 NOGIT_DIR=$(mktemp -d)
 output=$(pathline_render "$NOGIT_DIR" "")
 plain=$(strip_ansi "$output")
 assert_not_contains "no git: no parens" "$plain" "("
+assert_contains "no git: path ends with a slash" "$plain" "$(basename "$NOGIT_DIR")/"
 rm -rf "$NOGIT_DIR"
+
+# Test: Root directory keeps a single slash
+output=$(pathline_render "/" "")
+plain=$(strip_ansi "$output")
+assert_not_contains "root: no double slash" "$plain" "//"
+
+# Test: Home directory shows as ~/
+output=$(HOME="$TEST_DIR/normalrepo" pathline_render "$TEST_DIR/normalrepo" "main")
+plain=$(strip_ansi "$output")
+assert_contains "home: shows ~/" "$plain" "~/ (main)"
 
 # Test: Worktree in .worktrees/ matching branch
 output=$(pathline_render "$TEST_DIR/repo/.worktrees/feature/login" "feature/login")
 plain=$(strip_ansi "$output")
 assert_contains "worktree match: shows name" "$plain" "feature/login"
 assert_not_contains "worktree match: no parens" "$plain" "(feature/login)"
+assert_contains "worktree match: path ends with a slash" "$plain" "feature/login/"
 
 # Test: Worktree branch mismatch
 output=$(pathline_render "$TEST_DIR/repo/.worktrees/feature/login" "bugfix/other")

@@ -98,6 +98,15 @@ Assert-Contains -Name "home sub: starts with ~" -Haystack $result -Needle "~"
 Assert-Contains -Name "home sub: has path" -Haystack $result -Needle "/projects/foo"
 Assert-NotContains -Name "home sub: no full home" -Haystack $result -Needle $testDir
 
+# Test: Home directory itself shows as ~/
+$output = Invoke-PathlineCapture -RawPath $testDir
+$plain = Strip-Ansi "$output"
+if ($plain -ceq "~/") {
+    Write-Pass -Name "home: shows ~/"
+} else {
+    Write-Fail -Name "home: shows ~/" -Expected "~/" -Actual $plain
+}
+
 # Test: Display path outside home
 $result = Script:Get-DisplayPath -RawPath "/opt/projects/foo"
 Assert-Contains -Name "outside home: shows full path" -Haystack $result -Needle "/opt/projects/foo"

@@ -301,6 +301,14 @@ describe("buildPathlineSegments (segment array output)", () => {
         expect(segmentsToText(result)).not.toContain("/home/user")
     })
 
+    it("home directory itself shows as ~/", () => {
+        expect(segmentsToText(buildPathlineSegments("/home/user", undefined))).toBe("~/")
+    })
+
+    it("sibling of the home directory is not shortened", () => {
+        expect(segmentsToText(buildPathlineSegments("/home/user2", undefined))).toBe("/home/user2/")
+    })
+
     it("path outside home directory is shown as-is", () => {
         const result = buildPathlineSegments("/opt/projects/foo", "main")
         expect(segmentsToText(result)).toBe("/opt/projects/foo/ (main)")

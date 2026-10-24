@@ -36,7 +36,7 @@ function Script:Get-DisplayPath {
     $homeDir = if ($env:HOME) { $env:HOME } else { $env:USERPROFILE }
     if (-not $homeDir) { return $RawPath }
     $normalizedHome = $homeDir.Replace("\", "/")
-    if ($RawPath -ne $normalizedHome -and $RawPath.StartsWith("$normalizedHome/")) {
+    if ($RawPath -eq $normalizedHome -or $RawPath.StartsWith("$normalizedHome/")) {
         return "~" + $RawPath.Substring($normalizedHome.Length)
     }
     return $RawPath

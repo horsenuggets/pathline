@@ -22,6 +22,18 @@ locals {
   ]
 }
 
+# Adopt the existing repository and ruleset instead of trying to create them. Import ids
+# must be literal strings on Terraform 1.5.
+import {
+  to = github_repository.pathline
+  id = "pathline"
+}
+
+import {
+  to = github_repository_ruleset.main
+  id = "pathline:15735746"
+}
+
 # Repository settings
 resource "github_repository" "pathline" {
   name        = local.repo_name

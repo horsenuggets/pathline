@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 
-# Shell tests for pathline.sh, run inside Docker.
+# Shell tests for pathline.sh, run inside Docker under both bash and zsh.
 # Outputs JSON lines for each test case.
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/.." && pwd)"
 
 # Strip ANSI codes for plain text comparison
 strip_ansi() {
@@ -188,3 +188,6 @@ plain=$(strip_ansi "$output")
 assert_contains "windows-sim: shows worktree name" "$plain" "feature/auth"
 assert_not_contains "windows-sim: no parens" "$plain" "(feature/auth)"
 export HOME="$SAVED_HOME"
+
+# Lets the runner tell a finished run apart from one that stopped early
+echo "DONE"

@@ -43,8 +43,8 @@ pathline_get_path() {
 
 # Check if a path is a worktree root (.git is a file, not a directory)
 _pathline_is_worktree() {
-    local path="$1"
-    [[ -f "$path/.git" ]]
+    local dir="$1"
+    [[ -f "$dir/.git" ]]
 }
 
 # Main render function. Outputs the path with ANSI color codes,
@@ -57,6 +57,8 @@ _pathline_is_worktree() {
 #   path_color   - Hex color or ANSI escape for path segments (default: cbd4fe)
 #   branch_color - Hex color or ANSI escape for branch segments (default: b4a7d6)
 pathline_render() {
+    # Index arrays from 0 like bash does. The option only lasts until this function returns.
+    [[ -n "${ZSH_VERSION:-}" ]] && setopt local_options ksh_arrays
     local raw_path="${1:-$PWD}"
     local path_color="${3:-cbd4fe}"
     local branch_color="${4:-b4a7d6}"

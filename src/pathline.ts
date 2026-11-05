@@ -5,7 +5,9 @@ pathline
 Git-aware path display with worktree highlighting. Detects worktrees
 by checking for .git FILES (not directories) at path prefixes,
 verifies each against its repo's branch (case-sensitive), and returns
-colored segments for terminal rendering. Supports arbitrary nesting.
+colored segments for terminal rendering. Supports arbitrary nesting,
+and grays out path segments that no longer exist on disk, such as when
+the shell is still sitting in a deleted directory.
 
 */
 
@@ -14,11 +16,12 @@ import { existsSync, statSync } from "node:fs"
 
 export interface PathSegment {
     text: string
-    color: "path" | "branch"
+    color: "path" | "branch" | "missing"
 }
 
 const DEFAULT_PATH_COLOR = "\x1b[0;34m"
 const DEFAULT_BRANCH_COLOR = "\x1b[0;33m"
+const DEFAULT_MISSING_COLOR = "\x1b[0;90m"
 const RESET = "\x1b[0m"
 
 /**
@@ -124,6 +127,58 @@ function findWorktreeHighlights(
 }
 
 /**
+ * Find the character position in the display path where it stops existing on
+ * disk. Returns -1 when every segment exists. A shell can stay inside a
+ * directory after it is deleted, so the stale part of the path is grayed out.
+ */
+function findMissingStart(displayPath: string, rawPath: string): number {
+    const normalized = displayPath.replace(/\\/g, "/")
+    const segments = normalized.split("/")
+    const rawOffset = rawPath.length - displayPath.length
+    let lastExistingEnd = 0
+
+    for (let i = 1; i <= segments.length; i++) {
+        const prefix = segments.slice(0, i).join("/")
+        const rawPrefix = rawPath.slice(0, prefix.length + rawOffset)
+
+        // An empty prefix is the filesystem root, which always exists.
+        if (rawPrefix && !existsSync(rawPrefix)) {
+            return lastExistingEnd === 0 ? 0 : lastExistingEnd + 1
+        }
+
+        lastExistingEnd = prefix.length
+    }
+
+    return -1
+}
+
+/**
+ * Mark every segment at or after missingStart as missing, splitting the
+ * segment that straddles the boundary.
+ */
+function applyMissingColor(segments: PathSegment[], missingStart: number): PathSegment[] {
+    if (missingStart < 0) return segments
+
+    const result: PathSegment[] = []
+    let pos = 0
+
+    for (const segment of segments) {
+        const end = pos + segment.text.length
+        if (end <= missingStart) {
+            result.push(segment)
+        } else if (pos >= missingStart) {
+            result.push({ text: segment.text, color: "missing" })
+        } else {
+            result.push({ text: segment.text.slice(0, missingStart - pos), color: segment.color })
+            result.push({ text: segment.text.slice(missingStart - pos), color: "missing" })
+        }
+        pos = end
+    }
+
+    return result
+}
+
+/**
  * Build a pathline from a raw filesystem path. Returns a baked ANSI string
  * ready to print, with path segments in blue and branch segments in yellow.
  *
@@ -134,20 +189,25 @@ function findWorktreeHighlights(
  * @param branch - The innermost git branch (computed if omitted)
  * @param pathColor - ANSI escape for path segments (default: blue)
  * @param branchColor - ANSI escape for branch segments (default: yellow)
+ * @param missingColor - ANSI escape for missing segments (default: gray)
  */
 export function buildPathline(
     rawPath?: string,
     branch?: string,
     pathColor?: string,
     branchColor?: string,
+    missingColor?: string,
 ): string {
     const segments = buildPathlineSegments(rawPath, branch)
     const resolvedPath = pathColor ?? DEFAULT_PATH_COLOR
     const resolvedBranch = branchColor ?? DEFAULT_BRANCH_COLOR
+    const resolvedMissing = missingColor ?? DEFAULT_MISSING_COLOR
 
     let result = ""
     for (const seg of segments) {
-        const color = seg.color === "path" ? resolvedPath : resolvedBranch
+        let color = resolvedPath
+        if (seg.color === "branch") color = resolvedBranch
+        else if (seg.color === "missing") color = resolvedMissing
         result += color + seg.text
     }
     result += RESET
@@ -171,17 +231,41 @@ export function buildPathlineSegments(rawPath?: string, branch?: string): PathSe
     let displayPath = toDisplayPath(normalizedRaw)
     const resolvedBranch = branch ?? getGitBranch(rawPath)
     const verifiedSegments = findWorktreeHighlights(displayPath, normalizedRaw)
+    const missingStart = findMissingStart(displayPath, normalizedRaw)
 
     // Directories always end with a slash. Add it after finding highlights, so that the
     // path splits into the same segments as before.
     if (!displayPath.endsWith("/")) displayPath += "/"
 
+    const segments = applyMissingColor(
+        buildHighlightedSegments(displayPath, verifiedSegments),
+        missingStart,
+    )
+
+    const lastVerified = verifiedSegments[verifiedSegments.length - 1]
+    const innermostIsWorktree =
+        lastVerified &&
+        resolvedBranch &&
+        displayPath.slice(lastVerified.nameStart, lastVerified.nameEnd) === resolvedBranch &&
+        displayPath[lastVerified.nameEnd] === "/"
+
+    if (!innermostIsWorktree && resolvedBranch) {
+        segments.push({ text: ` (${resolvedBranch})`, color: "branch" })
+    }
+
+    return segments
+}
+
+/**
+ * Split the display path into path and branch segments based on the verified
+ * worktree highlights.
+ */
+function buildHighlightedSegments(
+    displayPath: string,
+    verifiedSegments: Array<{ nameStart: number; nameEnd: number }>,
+): PathSegment[] {
     if (verifiedSegments.length === 0) {
-        const segments: PathSegment[] = [{ text: displayPath, color: "path" }]
-        if (resolvedBranch) {
-            segments.push({ text: ` (${resolvedBranch})`, color: "branch" })
-        }
-        return segments
+        return [{ text: displayPath, color: "path" }]
     }
 
     const segments: PathSegment[] = []
@@ -197,17 +281,6 @@ export function buildPathlineSegments(rawPath?: string, branch?: string): PathSe
 
     if (pos < displayPath.length) {
         segments.push({ text: displayPath.slice(pos), color: "path" })
-    }
-
-    const lastVerified = verifiedSegments[verifiedSegments.length - 1]
-    const innermostIsWorktree =
-        lastVerified &&
-        resolvedBranch &&
-        displayPath.slice(lastVerified.nameStart, lastVerified.nameEnd) === resolvedBranch &&
-        displayPath[lastVerified.nameEnd] === "/"
-
-    if (!innermostIsWorktree && resolvedBranch) {
-        segments.push({ text: ` (${resolvedBranch})`, color: "branch" })
     }
 
     return segments

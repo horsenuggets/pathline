@@ -48,13 +48,15 @@ function Invoke-PathlineCapture {
         [string]$RawPath,
         [string]$Branch,
         [string]$PathColor,
-        [string]$BranchColor
+        [string]$BranchColor,
+        [string]$MissingColor
     )
     $params = @{}
     if ($RawPath) { $params["RawPath"] = $RawPath }
     if ($Branch) { $params["Branch"] = $Branch }
     if ($PathColor) { $params["PathColor"] = $PathColor }
     if ($BranchColor) { $params["BranchColor"] = $BranchColor }
+    if ($MissingColor) { $params["MissingColor"] = $MissingColor }
     $result = Invoke-Pathline @params 6>&1
     return "$result"
 }
@@ -179,6 +181,23 @@ Assert-Contains -Name "dark colors: branch has 050505 RGB" -Haystack $output -Ne
 $output = Invoke-PathlineCapture -RawPath $normalRepo -Branch "main" -PathColor "fefefe" -BranchColor "f0f0f0"
 Assert-Contains -Name "light colors: path has fefefe RGB" -Haystack $output -Needle "254;254;254"
 Assert-Contains -Name "light colors: branch has f0f0f0 RGB" -Haystack $output -Needle "240;240;240"
+
+# Test: Deleted directory grays out the missing part
+$deletedParent = Join-Path $testDir "deleted"
+New-Item -ItemType Directory -Path (Join-Path $deletedParent "folder") -Force | Out-Null
+Remove-Item -Recurse -Force $deletedParent
+$output = Invoke-PathlineCapture -RawPath "$deletedParent/folder" -Branch "main"
+Assert-Contains -Name "deleted: missing part is gray" -Haystack $output -Needle "38;2;136;136;136mdeleted/folder/"
+$plain = Strip-Ansi "$output"
+Assert-Contains -Name "deleted: keeps the full path" -Haystack $plain -Needle "~/deleted/folder/"
+
+# Test: Custom missing color
+$output = Invoke-PathlineCapture -RawPath "$deletedParent/folder" -Branch "main" -PathColor "cbd4fe" -BranchColor "b4a7d6" -MissingColor "ff5500"
+Assert-Contains -Name "deleted: custom missing color" -Haystack $output -Needle "38;2;255;85;0mdeleted/folder/"
+
+# Test: Existing paths have no missing color
+$output = Invoke-PathlineCapture -RawPath $normalRepo -Branch "main"
+Assert-NotContains -Name "existing path: no missing color" -Haystack $output -Needle "38;2;136;136;136"
 
 # Test: Windows-style path simulation
 # Set HOME to something that does not overlap with the test path

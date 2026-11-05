@@ -183,6 +183,9 @@ pathline_render() {
     # after it is deleted, so everything from that segment on is drawn in the missing color.
     local missing_start=-1
     local existing_end=0
+    # The filesystem root is a prefix of every absolute path, so its presence must be
+    # remembered without a separate existence check.
+    local has_existing_prefix=false
     local is_unc_path=false
     [[ "$raw_path" == //* ]] && is_unc_path=true
     prefix=""
@@ -200,20 +203,22 @@ pathline_render() {
         # so the incomplete prefixes before it always count as existing.
         if [[ "$is_unc_path" == true ]] && [[ ! "$missing_raw" =~ ^//[^/]+/[^/]+ ]]; then
             existing_end=${#prefix}
+            has_existing_prefix=true
             continue
         fi
 
         # An empty path is the filesystem root, which always exists.
         if [[ -n "$missing_check" ]] && [[ ! -d "$missing_check" ]]; then
-            if (( existing_end == 0 )); then
-                missing_start=0
-            else
+            if [[ "$has_existing_prefix" == true ]]; then
                 missing_start=$(( existing_end + 1 ))
+            else
+                missing_start=0
             fi
             break
         fi
 
         existing_end=${#prefix}
+        has_existing_prefix=true
     done
 
     # Directories always end with a slash. Add it after finding highlights, so that the

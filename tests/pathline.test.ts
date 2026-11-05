@@ -444,4 +444,36 @@ describe("UNC paths (missing color)", () => {
         expect(result[0].text).toBe("//server/")
         expect(result[1].text).toBe("share/repo/")
     })
+
+    it("checks a home directory that lives on a UNC share", () => {
+        const originalHome = process.env.HOME
+        process.env.HOME = "//server/share/user"
+        try {
+            mockMissingPaths(["//server/share/user/gone"])
+            const result = buildPathlineSegments("//server/share/user/gone", "main")
+            expect(segmentsToText(result)).toBe("~/gone/ (main)")
+            expect(segmentColors(result)).toEqual(["path", "missing", "branch"])
+            expect(result[1].text).toBe("gone/")
+        } finally {
+            process.env.HOME = originalHome
+        }
+    })
+})
+
+describe("missing top-level directories", () => {
+    it("keeps the filesystem root in path color", () => {
+        mockMissingPaths(["/gone"])
+        const result = buildPathlineSegments("/gone/deeper", "main")
+        expect(segmentsToText(result)).toBe("/gone/deeper/ (main)")
+        expect(segmentColors(result)).toEqual(["path", "missing", "branch"])
+        expect(result[0].text).toBe("/")
+        expect(result[1].text).toBe("gone/deeper/")
+    })
+
+    it("grays out a missing relative path from its first character", () => {
+        mockMissingPaths(["gone"])
+        const result = buildPathlineSegments("gone/deeper", "main")
+        expect(segmentsToText(result)).toBe("gone/deeper/ (main)")
+        expect(segmentColors(result)).toEqual(["missing", "branch"])
+    })
 })

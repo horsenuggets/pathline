@@ -180,12 +180,20 @@ function Invoke-Pathline {
     # after it is deleted, so everything from that segment on is drawn in the missing color.
     $missingStart = -1
     $existingEnd = 0
+    $isUncPath = $normalizedRaw.StartsWith("//")
 
     for ($i = 1; $i -le $segments.Length; $i++) {
         if ($missingStart -ge 0) { break }
 
         $prefix = ($segments[0..($i - 1)]) -join "/"
         $rawPrefix = $normalizedRaw.Substring(0, $prefix.Length + $rawOffset)
+
+        # A UNC path is only a valid directory from its complete server/share root,
+        # so the incomplete prefixes before it always count as existing.
+        if ($isUncPath -and $rawPrefix -notmatch '^//[^/]+/[^/]+') {
+            $existingEnd = $prefix.Length
+            continue
+        }
 
         # Convert to native path for filesystem check
         $nativePath = if ($IsWindows -or (-not (Test-Path variable:IsWindows) -and $env:OS -eq "Windows_NT")) {

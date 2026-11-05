@@ -183,6 +183,8 @@ pathline_render() {
     # after it is deleted, so everything from that segment on is drawn in the missing color.
     local missing_start=-1
     local existing_end=0
+    local is_unc_path=false
+    [[ "$raw_path" == //* ]] && is_unc_path=true
     prefix=""
     for (( i=0; i<${#path_segments[@]}; i++ )); do
         if [[ $i -eq 0 ]]; then
@@ -193,6 +195,13 @@ pathline_render() {
 
         local missing_raw="${raw_path:0:$(( ${#prefix} + raw_offset ))}"
         local missing_check="${missing_raw/#\~/$HOME}"
+
+        # A UNC path is only a valid directory from its complete server/share root,
+        # so the incomplete prefixes before it always count as existing.
+        if [[ "$is_unc_path" == true ]] && [[ ! "$missing_raw" =~ ^//[^/]+/[^/]+ ]]; then
+            existing_end=${#prefix}
+            continue
+        fi
 
         # An empty path is the filesystem root, which always exists.
         if [[ -n "$missing_check" ]] && [[ ! -d "$missing_check" ]]; then

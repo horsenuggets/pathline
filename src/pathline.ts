@@ -135,11 +135,19 @@ function findMissingStart(displayPath: string, rawPath: string): number {
     const normalized = displayPath.replace(/\\/g, "/")
     const segments = normalized.split("/")
     const rawOffset = rawPath.length - displayPath.length
+    const isUncPath = rawPath.startsWith("//")
     let lastExistingEnd = 0
 
     for (let i = 1; i <= segments.length; i++) {
         const prefix = segments.slice(0, i).join("/")
         const rawPrefix = rawPath.slice(0, prefix.length + rawOffset)
+
+        // A UNC path is only a valid directory from its complete server/share root,
+        // so the incomplete prefixes before it always count as existing.
+        if (isUncPath && !/^\/\/[^/]+\/[^/]+/.test(rawPrefix)) {
+            lastExistingEnd = prefix.length
+            continue
+        }
 
         // An empty prefix is the filesystem root, which always exists.
         if (rawPrefix && !existsSync(rawPrefix)) {

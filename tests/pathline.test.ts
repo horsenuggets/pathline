@@ -425,3 +425,23 @@ describe("deleted directories (missing color)", () => {
         expect(segmentColors(result)).toEqual(["path", "branch"])
     })
 })
+
+describe("UNC paths (missing color)", () => {
+    it("does not mark an existing UNC share as missing", () => {
+        // On Windows, the partial root //server is not a directory, so only paths at
+        // or below the complete //server/share root can be checked.
+        mockExistsSync.mockImplementation((p: string) => p.startsWith("//server/share"))
+        const result = buildPathlineSegments("//server/share/repo", "main")
+        expect(segmentsToText(result)).toBe("//server/share/repo/ (main)")
+        expect(segmentColors(result)).toEqual(["path", "branch"])
+    })
+
+    it("grays out everything from a missing UNC share onward", () => {
+        mockExistsSync.mockReturnValue(false)
+        const result = buildPathlineSegments("//server/share/repo", "main")
+        expect(segmentsToText(result)).toBe("//server/share/repo/ (main)")
+        expect(segmentColors(result)).toEqual(["path", "missing", "branch"])
+        expect(result[0].text).toBe("//server/")
+        expect(result[1].text).toBe("share/repo/")
+    })
+})

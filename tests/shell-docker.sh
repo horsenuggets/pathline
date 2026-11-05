@@ -172,6 +172,24 @@ output=$(pathline_render "$TEST_DIR/normalrepo" "main")
 assert_contains "default colors: path has cbd4fe RGB" "$output" "203;212;254"
 assert_contains "default colors: branch has b4a7d6 RGB" "$output" "180;167;214"
 
+# Test: Deleted directory grays out the missing part
+DELETED_DIR="$TEST_DIR/deleted/folder"
+mkdir -p "$DELETED_DIR"
+rm -rf "$TEST_DIR/deleted"
+output=$(pathline_render "$DELETED_DIR" "main")
+assert_contains "deleted: existing part is path color" "$output" "203;212;254m$TEST_DIR/"
+assert_contains "deleted: missing part is gray" "$output" "136;136;136mdeleted/folder/"
+plain=$(strip_ansi "$output")
+assert_contains "deleted: keeps the full path" "$plain" "deleted/folder/"
+
+# Test: Custom missing color
+output=$(pathline_render "$DELETED_DIR" "main" "cbd4fe" "b4a7d6" "ff5500")
+assert_contains "deleted: custom missing color" "$output" "255;85;0mdeleted/folder/"
+
+# Test: Existing paths have no missing color
+output=$(pathline_render "$TEST_DIR/normalrepo" "main")
+assert_not_contains "existing path: no missing color" "$output" "136;136;136"
+
 # Test: Windows-style simulated paths
 # Create the git repo first (before changing HOME so git config is found)
 WIN_DIR="$TEST_DIR/C:/Users/user/repos"

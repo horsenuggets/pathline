@@ -3,7 +3,8 @@
 # Git-aware path display with worktree highlighting. Detects worktrees
 # by checking for .git FILES (not directories) at path prefixes,
 # verifies each against its repo's branch (case-sensitive), and outputs
-# ANSI-colored text. Supports arbitrary nesting depth.
+# ANSI-colored text. Supports arbitrary nesting depth, and grays out path
+# segments that no longer exist on disk.
 #
 # Compatible with PowerShell 5.1+ and PowerShell Core 7+.
 # Dot-source this file and call Invoke-Pathline to get colored output.
@@ -51,6 +52,38 @@ function Script:Test-WorktreeRoot {
     return $false
 }
 
+function Script:Test-Directory {
+    param([string]$Path)
+    # An empty path is the filesystem root, which always exists.
+    if (-not $Path) { return $true }
+    return Test-Path -LiteralPath $Path -PathType Container
+}
+
+function Script:ConvertTo-AnsiColorRange {
+    param(
+        [string]$Text,
+        [int]$Start,
+        [int]$End,
+        [string]$Hex,
+        [int]$MissingStart,
+        [string]$MissingHex
+    )
+
+    if ($End -le $Start) { return "" }
+
+    if ($MissingStart -lt 0 -or $End -le $MissingStart) {
+        return Script:ConvertTo-AnsiColor -Text $Text.Substring($Start, $End - $Start) -Hex $Hex
+    }
+
+    if ($Start -ge $MissingStart) {
+        return Script:ConvertTo-AnsiColor -Text $Text.Substring($Start, $End - $Start) -Hex $MissingHex
+    }
+
+    $existing = Script:ConvertTo-AnsiColor -Text $Text.Substring($Start, $MissingStart - $Start) -Hex $Hex
+    $missing = Script:ConvertTo-AnsiColor -Text $Text.Substring($MissingStart, $End - $MissingStart) -Hex $MissingHex
+    return $existing + $missing
+}
+
 function Invoke-Pathline {
     <#
     .SYNOPSIS
@@ -59,6 +92,12 @@ function Invoke-Pathline {
         Filesystem path to render. Defaults to $PWD.
     .PARAMETER Branch
         Git branch name. Defaults to computed via git.
+    .PARAMETER PathColor
+        Hex color for existing path segments. Defaults to cbd4fe.
+    .PARAMETER BranchColor
+        Hex color for branch segments. Defaults to b4a7d6.
+    .PARAMETER MissingColor
+        Hex color for path segments that no longer exist. Defaults to 888888.
     #>
     param(
         [Parameter(Position = 0)]
@@ -71,11 +110,15 @@ function Invoke-Pathline {
         [string]$PathColor,
 
         [Parameter(Position = 3)]
-        [string]$BranchColor
+        [string]$BranchColor,
+
+        [Parameter(Position = 4)]
+        [string]$MissingColor
     )
 
     if (-not $PathColor) { $PathColor = "cbd4fe" }
     if (-not $BranchColor) { $BranchColor = "b4a7d6" }
+    if (-not $MissingColor) { $MissingColor = "888888" }
 
     if (-not $RawPath) {
         $RawPath = (Get-Location).Path
@@ -133,6 +176,41 @@ function Invoke-Pathline {
         }
     }
 
+    # Find the first segment that no longer exists. A shell can stay inside a directory
+    # after it is deleted, so everything from that segment on is drawn in the missing color.
+    $missingStart = -1
+    $existingEnd = 0
+    $isUncPath = $normalizedRaw.StartsWith("//")
+
+    for ($i = 1; $i -le $segments.Length; $i++) {
+        if ($missingStart -ge 0) { break }
+
+        $prefix = ($segments[0..($i - 1)]) -join "/"
+        $rawPrefix = $normalizedRaw.Substring(0, $prefix.Length + $rawOffset)
+
+        # A UNC path is only a valid directory from its complete server/share root,
+        # so the incomplete prefixes before it always count as existing.
+        if ($isUncPath -and $rawPrefix -notmatch '^//[^/]+/[^/]+') {
+            $existingEnd = $prefix.Length
+            continue
+        }
+
+        # Convert to native path for filesystem check
+        $nativePath = if ($IsWindows -or (-not (Test-Path variable:IsWindows) -and $env:OS -eq "Windows_NT")) {
+            $rawPrefix.Replace("/", "\")
+        } else {
+            $rawPrefix
+        }
+
+        if (Script:Test-Directory -Path $nativePath) {
+            $existingEnd = $prefix.Length
+        } elseif ($existingEnd -eq 0) {
+            $missingStart = 0
+        } else {
+            $missingStart = $existingEnd + 1
+        }
+    }
+
     # Directories always end with a slash. Add it after finding highlights, so that the
     # path splits into the same segments as before.
     if (-not $displayPath.EndsWith("/")) { $displayPath += "/" }
@@ -142,7 +220,8 @@ function Invoke-Pathline {
     $output = ""
 
     if ($verifiedSegments.Count -eq 0) {
-        $output = Script:ConvertTo-AnsiColor -Text $displayPath -Hex $PathColor
+        $output = Script:ConvertTo-AnsiColorRange -Text $displayPath -Start 0 -End $displayPath.Length `
+            -Hex $PathColor -MissingStart $missingStart -MissingHex $MissingColor
         if ($Branch) {
             $output += " " + (Script:ConvertTo-AnsiColor -Text "($Branch)" -Hex $BranchColor)
         }
@@ -150,13 +229,16 @@ function Invoke-Pathline {
         $pos = 0
         foreach ($seg in $verifiedSegments) {
             if ($pos -lt $seg.nameStart) {
-                $output += Script:ConvertTo-AnsiColor -Text $displayPath.Substring($pos, $seg.nameStart - $pos) -Hex $PathColor
+                $output += Script:ConvertTo-AnsiColorRange -Text $displayPath -Start $pos -End $seg.nameStart `
+                    -Hex $PathColor -MissingStart $missingStart -MissingHex $MissingColor
             }
-            $output += Script:ConvertTo-AnsiColor -Text $displayPath.Substring($seg.nameStart, $seg.nameEnd - $seg.nameStart) -Hex $BranchColor
+            $output += Script:ConvertTo-AnsiColorRange -Text $displayPath -Start $seg.nameStart -End $seg.nameEnd `
+                -Hex $BranchColor -MissingStart $missingStart -MissingHex $MissingColor
             $pos = $seg.nameEnd
         }
         if ($pos -lt $displayPath.Length) {
-            $output += Script:ConvertTo-AnsiColor -Text $displayPath.Substring($pos) -Hex $PathColor
+            $output += Script:ConvertTo-AnsiColorRange -Text $displayPath -Start $pos -End $displayPath.Length `
+                -Hex $PathColor -MissingStart $missingStart -MissingHex $MissingColor
         }
 
         # Determine if last verified segment is the innermost worktree

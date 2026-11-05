@@ -9,29 +9,32 @@ Implementations are provided in TypeScript, shell (bash/zsh), and PowerShell.
 
 ## Features
 
-- Detects `.worktrees/<name>` segments in paths and verifies them against the
+- Detects worktree roots at any path prefix and verifies them against the
   actual git branch (case-sensitive)
 - Supports branch names with slashes (e.g. `feature/auth` creates
-  `.worktrees/feature/auth/`)
+  `.wt/feature/auth/`)
 - Handles arbitrary nesting (worktrees inside submodules inside worktrees)
 - Only highlights verified worktree names (folder name must match branch)
 - Omits the branch suffix when the innermost branch is already visible as a
   worktree name
+- Grays out path segments that no longer exist, such as when the shell is still
+  inside a deleted directory
 - Works on macOS, Linux, and Windows
 
 ## Colors
 
-All implementations take the same four optional positional arguments:
+All implementations take the same five optional positional arguments:
 
 ```
-buildPathline(rawPath?, branch?, pathColor?, branchColor?)
+buildPathline(rawPath?, branch?, pathColor?, branchColor?, missingColor?)
 ```
 
-The 3rd and 4th arguments override colors. Defaults are blue/yellow ANSI escapes
-in TypeScript (`\x1b[0;34m` / `\x1b[0;33m`) and hex values in shell/PowerShell
-(`cbd4fe` / `b4a7d6`). The shell version also accepts ANSI escapes such as
-`\033[0;34m` in place of hex values, for terminals without truecolor support. Use `buildPathlineSegments(rawPath?, branch?)` in
-TypeScript for raw segment arrays when custom rendering is needed.
+The 3rd through 5th arguments override colors. Defaults are blue/yellow/gray
+ANSI escapes in TypeScript (`\x1b[0;34m` / `\x1b[0;33m` / `\x1b[0;90m`) and hex
+values in shell/PowerShell (`cbd4fe` / `b4a7d6` / `888888`). The shell version
+also accepts ANSI escapes such as `\033[0;34m` in place of hex values, for
+terminals without truecolor support. Use `buildPathlineSegments(rawPath?, branch?)`
+in TypeScript for raw segment arrays when custom rendering is needed.
 
 ## Output
 
@@ -49,35 +52,35 @@ as a single `/`.
 Worktree root (branch matches folder name, so branch is omitted):
 
 ```
-macOS/Linux:  ~/git/project/.worktrees/feature/auth/
-Windows:      C:\Users\user\git\project\.worktrees\feature\auth\
-                                       ^^^^^^^^^^^^
-                                       highlighted in branch color
+macOS/Linux:  ~/git/project/.wt/feature/auth/
+Windows:      C:\Users\user\git\project\.wt\feature\auth\
+                                ^^^^^^^^^^^^
+                                highlighted in branch color
 ```
 
 Worktree with subdirectory:
 
 ```
-~/git/project/.worktrees/feature/auth/src/components/
-                         ^^^^^^^^^^^^
-                         highlighted in branch color
+~/git/project/.wt/feature/auth/src/components/
+                  ^^^^^^^^^^^^
+                  highlighted in branch color
 ```
 
 Inside a submodule within a worktree (outer worktree highlighted, inner
 branch shown separately):
 
 ```
-~/git/project/.worktrees/feature/auth/submod/ (3f914c9)
-                         ^^^^^^^^^^^^         ^^^^^^^^^
-                         branch color         detached HEAD of submodule
+~/git/project/.wt/feature/auth/submod/ (3f914c9)
+                  ^^^^^^^^^^^^         ^^^^^^^^^
+                  branch color         detached HEAD of submodule
 ```
 
 Nested worktrees at arbitrary depth (all matching names highlighted):
 
 ```
-/tmp/repo/.worktrees/feature/level0/nested/.worktrees/bugfix/level1/
-                     ^^^^^^^^^^^^^^                   ^^^^^^^^^^^^
-                     both highlighted in branch color
+/tmp/repo/.wt/feature/level0/nested/.wt/bugfix/level1/
+              ^^^^^^^^^^^^^^            ^^^^^^^^^^^^^^
+              both highlighted in branch color
 ```
 
 Home directory without a git repo:
@@ -91,7 +94,35 @@ Worktree where the folder name does not match the branch (no highlighting,
 branch shown normally):
 
 ```
-~/git/project/.worktrees/old-name/ (bugfix/renamed)
+~/git/project/.wt/old-name/ (bugfix/renamed)
+```
+
+Deleted directory (the shell is still inside a path that no longer exists, so
+the missing part is shown in the missing color):
+
+```
+~/git/project/nested/folder/
+^^^^^^^^^^^^^^              path color
+              ^^^^^^^^^^^^^^ missing color
+```
+
+Worktree with a deleted subdirectory (path, branch, and missing colors at
+once):
+
+```
+~/git/project/.wt/feature/auth/src/gone/
+                  ^^^^^^^^^^^^     ^^^^^
+                  branch color     missing color
+```
+
+## Preview
+
+To see every example above rendered in full color, run the preview script, which
+builds temporary repositories and prints each case with the classic ANSI blue and
+yellow that terminal prompts typically use...
+
+```bash
+npm run preview
 ```
 
 ## Testing

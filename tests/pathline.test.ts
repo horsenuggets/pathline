@@ -22,15 +22,18 @@ function segmentsToText(segments: PathSegment[]): string {
     return segments.map((s) => s.text).join("")
 }
 
-function segmentColors(segments: PathSegment[]): Array<"path" | "branch"> {
+function segmentColors(segments: PathSegment[]): PathSegment["color"][] {
     return segments.map((s) => s.color)
 }
 
+/** Check whether a path is one of the missing paths, or sits under one. */
+function isMissing(path: string, missing: string[]): boolean {
+    return missing.some((m) => path === m || path.startsWith(m + "/"))
+}
+
 /** Helper to mock a .git FILE (worktree) at a given path */
-function mockWorktreeAt(paths: string[]) {
-    mockExistsSync.mockImplementation((p: string) => {
-        return paths.includes(p)
-    })
+function mockWorktreeAt(paths: string[], missing: string[] = []) {
+    mockExistsSync.mockImplementation((p: string) => !isMissing(p, missing))
     mockStatSync.mockImplementation((p: string) => {
         if (paths.includes(p)) {
             return { isFile: () => true }
@@ -41,9 +44,7 @@ function mockWorktreeAt(paths: string[]) {
 
 /** Helper to mock a .git DIRECTORY (regular clone) at a given path */
 function mockRegularRepoAt(paths: string[]) {
-    mockExistsSync.mockImplementation((p: string) => {
-        return paths.includes(p)
-    })
+    mockExistsSync.mockReturnValue(true)
     mockStatSync.mockImplementation((p: string) => {
         if (paths.includes(p)) {
             return { isFile: () => false }
@@ -52,8 +53,18 @@ function mockRegularRepoAt(paths: string[]) {
     })
 }
 
+/** Helper to mock paths that no longer exist, along with everything under them. */
+function mockMissingPaths(paths: string[]) {
+    mockExistsSync.mockImplementation((p: string) => !isMissing(p, paths))
+}
+
 beforeEach(() => {
     vi.resetAllMocks()
+    // By default every directory exists, so only missing-path tests opt in.
+    mockExistsSync.mockReturnValue(true)
+    mockStatSync.mockImplementation(() => {
+        throw new Error("ENOENT")
+    })
     process.env.HOME = "/home/user"
     delete process.env.USERPROFILE
 })
@@ -201,16 +212,10 @@ describe("buildPathlineSegments (segment array output)", () => {
     })
 
     it("nested worktrees (2+ levels) highlight all matching names", () => {
-        mockExistsSync.mockImplementation((p: string) => {
-            if (p === "/home/user/repo/.worktrees/feature/outer/.git") return true
-            if (p === "/home/user/repo/.worktrees/feature/outer/sub/.worktrees/fix/inner/.git") return true
-            return false
-        })
-        mockStatSync.mockImplementation((p: string) => {
-            if (p === "/home/user/repo/.worktrees/feature/outer/.git") return { isFile: () => true }
-            if (p === "/home/user/repo/.worktrees/feature/outer/sub/.worktrees/fix/inner/.git") return { isFile: () => true }
-            throw new Error("ENOENT")
-        })
+        mockWorktreeAt([
+            "/home/user/repo/.worktrees/feature/outer/.git",
+            "/home/user/repo/.worktrees/feature/outer/sub/.worktrees/fix/inner/.git",
+        ])
         mockExecSync.mockImplementation((cmd: string, opts: { cwd?: string }) => {
             if (opts?.cwd === "/home/user/repo/.worktrees/feature/outer") {
                 return Buffer.from("feature/outer\n")
@@ -341,5 +346,102 @@ describe("buildPathlineSegments (segment array output)", () => {
         } finally {
             process.cwd = originalCwd
         }
+    })
+})
+
+describe("deleted directories (missing color)", () => {
+    it("grays out a middle segment that no longer exists", () => {
+        mockMissingPaths(["/home/user/projects/nested"])
+        const result = buildPathlineSegments("/home/user/projects/nested/folder", "main")
+        expect(segmentsToText(result)).toBe("~/projects/nested/folder/ (main)")
+        expect(segmentColors(result)).toEqual(["path", "missing", "branch"])
+        expect(result[0].text).toBe("~/projects/")
+        expect(result[1].text).toBe("nested/folder/")
+    })
+
+    it("grays out the current directory when it was deleted", () => {
+        mockMissingPaths(["/home/user/projects/app"])
+        const result = buildPathlineSegments("/home/user/projects/app", "main")
+        expect(segmentsToText(result)).toBe("~/projects/app/ (main)")
+        expect(segmentColors(result)).toEqual(["path", "missing", "branch"])
+        expect(result[1].text).toBe("app/")
+    })
+
+    it("keeps worktree highlighting before a missing subdirectory", () => {
+        mockWorktreeAt(
+            ["/home/user/repo/.worktrees/feature/auth/.git"],
+            ["/home/user/repo/.worktrees/feature/auth/src/gone"],
+        )
+        mockExecSync.mockImplementation((cmd: string, opts: { cwd?: string }) => {
+            if (opts?.cwd === "/home/user/repo/.worktrees/feature/auth") {
+                return Buffer.from("feature/auth\n")
+            }
+            throw new Error("not a git repo")
+        })
+
+        const result = buildPathlineSegments(
+            "/home/user/repo/.worktrees/feature/auth/src/gone",
+            "feature/auth",
+        )
+        expect(segmentsToText(result)).toBe("~/repo/.worktrees/feature/auth/src/gone/")
+        expect(segmentColors(result)).toEqual(["path", "branch", "path", "missing"])
+        expect(result[3].text).toBe("gone/")
+    })
+
+    it("a worktree that was deleted is missing rather than highlighted", () => {
+        mockWorktreeAt(
+            ["/home/user/repo/.worktrees/feature/auth/.git"],
+            ["/home/user/repo/.worktrees/feature/auth"],
+        )
+        mockExecSync.mockImplementation(() => {
+            throw new Error("not a git repo")
+        })
+
+        const result = buildPathlineSegments(
+            "/home/user/repo/.worktrees/feature/auth",
+            "feature/auth",
+        )
+        expect(segmentsToText(result)).toBe("~/repo/.worktrees/feature/auth/ (feature/auth)")
+        expect(segmentColors(result)).toEqual(["path", "missing", "branch"])
+    })
+
+    it("buildPathline uses bright black for missing segments by default", () => {
+        mockMissingPaths(["/home/user/projects/app"])
+        const result = buildPathline("/home/user/projects/app", "main")
+        expect(result).toContain("\x1b[0;34m~/projects/")
+        expect(result).toContain("\x1b[0;90mapp/")
+        expect(result).toContain("\x1b[0;33m (main)")
+    })
+
+    it("buildPathline accepts a custom missing color", () => {
+        mockMissingPaths(["/home/user/projects/app"])
+        const result = buildPathline("/home/user/projects/app", "main", undefined, undefined, "\x1b[0;35m")
+        expect(result).toContain("\x1b[0;35mapp/")
+        expect(result).not.toContain("\x1b[0;90m")
+    })
+
+    it("existing paths have no missing segments", () => {
+        const result = buildPathlineSegments("/home/user/projects/app", "main")
+        expect(segmentColors(result)).toEqual(["path", "branch"])
+    })
+})
+
+describe("UNC paths (missing color)", () => {
+    it("does not mark an existing UNC share as missing", () => {
+        // On Windows, the partial root //server is not a directory, so only paths at
+        // or below the complete //server/share root can be checked.
+        mockExistsSync.mockImplementation((p: string) => p.startsWith("//server/share"))
+        const result = buildPathlineSegments("//server/share/repo", "main")
+        expect(segmentsToText(result)).toBe("//server/share/repo/ (main)")
+        expect(segmentColors(result)).toEqual(["path", "branch"])
+    })
+
+    it("grays out everything from a missing UNC share onward", () => {
+        mockExistsSync.mockReturnValue(false)
+        const result = buildPathlineSegments("//server/share/repo", "main")
+        expect(segmentsToText(result)).toBe("//server/share/repo/ (main)")
+        expect(segmentColors(result)).toEqual(["path", "missing", "branch"])
+        expect(result[0].text).toBe("//server/")
+        expect(result[1].text).toBe("share/repo/")
     })
 })

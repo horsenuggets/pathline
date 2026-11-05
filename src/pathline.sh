@@ -5,7 +5,8 @@
 # Git-aware path display with worktree highlighting. Detects worktrees
 # by checking for .git FILES (not directories) at path prefixes,
 # verifies each against its repo's branch (case-sensitive), and outputs
-# ANSI-colored text. Supports arbitrary nesting depth.
+# ANSI-colored text. Supports arbitrary nesting depth, and grays out path
+# segments that no longer exist on disk.
 #
 # Compatible with bash and zsh. Source this file and call
 # pathline_render to get colored path output.
@@ -47,21 +48,53 @@ _pathline_is_worktree() {
     [[ -f "$dir/.git" ]]
 }
 
-# Main render function. Outputs the path with ANSI color codes,
-# highlighting verified worktree names and appending the git branch
-# when appropriate.
+# Color a range of the display path, splitting at the point where the
+# path stops existing so that the missing part is always gray.
 #
-# Usage: pathline_render [raw_path] [branch] [path_color] [branch_color]
-#   raw_path     - Filesystem path (default: $PWD)
-#   branch       - Git branch name (default: computed via git)
-#   path_color   - Hex color or ANSI escape for path segments (default: cbd4fe)
-#   branch_color - Hex color or ANSI escape for branch segments (default: b4a7d6)
+# Usage: _pathline_color_range path start end color missing_start missing_color
+_pathline_color_range() {
+    local path="$1"
+    local start="$2"
+    local end="$3"
+    local color="$4"
+    local missing_start="$5"
+    local missing_color="$6"
+
+    if (( end <= start )); then
+        return
+    fi
+
+    if (( missing_start < 0 || end <= missing_start )); then
+        pathline_color "${path:$start:$((end - start))}" "$color"
+        return
+    fi
+
+    if (( start >= missing_start )); then
+        pathline_color "${path:$start:$((end - start))}" "$missing_color"
+        return
+    fi
+
+    pathline_color "${path:$start:$((missing_start - start))}" "$color"
+    pathline_color "${path:$missing_start:$((end - missing_start))}" "$missing_color"
+}
+
+# Main render function. Outputs the path with ANSI color codes,
+# highlighting verified worktree names, graying out missing segments,
+# and appending the git branch when appropriate.
+#
+# Usage: pathline_render [raw_path] [branch] [path_color] [branch_color] [missing_color]
+#   raw_path      - Filesystem path (default: $PWD)
+#   branch        - Git branch name (default: computed via git)
+#   path_color    - Hex color or ANSI escape for path segments (default: cbd4fe)
+#   branch_color  - Hex color or ANSI escape for branch segments (default: b4a7d6)
+#   missing_color - Hex color or ANSI escape for missing segments (default: 888888)
 pathline_render() {
     # Index arrays from 0 like bash does. The option only lasts until this function returns.
     [[ -n "${ZSH_VERSION:-}" ]] && setopt local_options ksh_arrays
     local raw_path="${1:-$PWD}"
     local path_color="${3:-cbd4fe}"
     local branch_color="${4:-b4a7d6}"
+    local missing_color="${5:-888888}"
     local custom_path
     if [[ -n "${1:-}" ]]; then
         local home_dir="$HOME"
@@ -146,6 +179,43 @@ pathline_render() {
         fi
     done
 
+    # Find the first segment that no longer exists. A shell can stay inside a directory
+    # after it is deleted, so everything from that segment on is drawn in the missing color.
+    local missing_start=-1
+    local existing_end=0
+    local is_unc_path=false
+    [[ "$raw_path" == //* ]] && is_unc_path=true
+    prefix=""
+    for (( i=0; i<${#path_segments[@]}; i++ )); do
+        if [[ $i -eq 0 ]]; then
+            prefix="${path_segments[0]}"
+        else
+            prefix="${prefix}/${path_segments[$i]}"
+        fi
+
+        local missing_raw="${raw_path:0:$(( ${#prefix} + raw_offset ))}"
+        local missing_check="${missing_raw/#\~/$HOME}"
+
+        # A UNC path is only a valid directory from its complete server/share root,
+        # so the incomplete prefixes before it always count as existing.
+        if [[ "$is_unc_path" == true ]] && [[ ! "$missing_raw" =~ ^//[^/]+/[^/]+ ]]; then
+            existing_end=${#prefix}
+            continue
+        fi
+
+        # An empty path is the filesystem root, which always exists.
+        if [[ -n "$missing_check" ]] && [[ ! -d "$missing_check" ]]; then
+            if (( existing_end == 0 )); then
+                missing_start=0
+            else
+                missing_start=$(( existing_end + 1 ))
+            fi
+            break
+        fi
+
+        existing_end=${#prefix}
+    done
+
     # Directories always end with a slash. Add it after finding highlights, so that the
     # path splits into the same segments as before.
     [[ "$custom_path" != */ ]] && custom_path+="/"
@@ -153,7 +223,7 @@ pathline_render() {
     local output=""
 
     if [[ ${#highlight_starts[@]} -eq 0 ]]; then
-        output="$(pathline_color "$custom_path" "$path_color")"
+        output="$(_pathline_color_range "$custom_path" 0 "${#custom_path}" "$path_color" "$missing_start" "$missing_color")"
         if [[ -n "$git_branch" ]]; then
             output+=" $(pathline_color "($git_branch)" "$branch_color")"
         fi
@@ -163,13 +233,13 @@ pathline_render() {
             local hs="${highlight_starts[$k]}"
             local he="${highlight_ends[$k]}"
             if (( pos < hs )); then
-                output+="$(pathline_color "${custom_path:$pos:$((hs - pos))}" "$path_color")"
+                output+="$(_pathline_color_range "$custom_path" "$pos" "$hs" "$path_color" "$missing_start" "$missing_color")"
             fi
-            output+="$(pathline_color "${custom_path:$hs:$((he - hs))}" "$branch_color")"
+            output+="$(_pathline_color_range "$custom_path" "$hs" "$he" "$branch_color" "$missing_start" "$missing_color")"
             pos=$he
         done
         if (( pos < ${#custom_path} )); then
-            output+="$(pathline_color "${custom_path:$pos}" "$path_color")"
+            output+="$(_pathline_color_range "$custom_path" "$pos" "${#custom_path}" "$path_color" "$missing_start" "$missing_color")"
         fi
 
         # Check if last highlight is the innermost worktree

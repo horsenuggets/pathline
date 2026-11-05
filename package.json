@@ -2,6 +2,7 @@
     "name": "pathline",
     "private": true,
     "scripts": {
+        "preview": "bash scripts/preview.sh",
         "test": "vitest run"
     },
     "devDependencies": {

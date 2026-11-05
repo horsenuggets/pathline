@@ -14,6 +14,13 @@ source "$SCRIPT_DIR/src/pathline.sh"
 TEST_DIR=$(mktemp -d)
 trap 'rm -rf "$TEST_DIR"' EXIT
 
+# Fixture commits must work without a configured Git identity, and without touching the
+# user's global configuration.
+export GIT_AUTHOR_NAME="pathline preview"
+export GIT_AUTHOR_EMAIL="pathline-preview@example.com"
+export GIT_COMMITTER_NAME="pathline preview"
+export GIT_COMMITTER_EMAIL="pathline-preview@example.com"
+
 # Preview with the classic ANSI blue and yellow that terminal prompts typically use,
 # rather than the truecolor defaults.
 PREVIEW_PATH_COLOR='\033[0;34m'

@@ -180,6 +180,9 @@ function Invoke-Pathline {
     # after it is deleted, so everything from that segment on is drawn in the missing color.
     $missingStart = -1
     $existingEnd = 0
+    # The filesystem root is a prefix of every absolute path, so its presence must be
+    # remembered without a separate existence check.
+    $hasExistingPrefix = $false
     $isUncPath = $normalizedRaw.StartsWith("//")
 
     for ($i = 1; $i -le $segments.Length; $i++) {
@@ -192,6 +195,7 @@ function Invoke-Pathline {
         # so the incomplete prefixes before it always count as existing.
         if ($isUncPath -and $rawPrefix -notmatch '^//[^/]+/[^/]+') {
             $existingEnd = $prefix.Length
+            $hasExistingPrefix = $true
             continue
         }
 
@@ -204,10 +208,11 @@ function Invoke-Pathline {
 
         if (Script:Test-Directory -Path $nativePath) {
             $existingEnd = $prefix.Length
-        } elseif ($existingEnd -eq 0) {
-            $missingStart = 0
-        } else {
+            $hasExistingPrefix = $true
+        } elseif ($hasExistingPrefix) {
             $missingStart = $existingEnd + 1
+        } else {
+            $missingStart = 0
         }
     }
 

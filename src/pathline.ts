@@ -138,6 +138,10 @@ function findMissingStart(displayPath: string, rawPath: string): number {
     const isUncPath = rawPath.startsWith("//")
     let lastExistingEnd = 0
 
+    // The filesystem root is a prefix of every absolute path, so its presence
+    // must be remembered without a separate existence check.
+    let hasExistingPrefix = false
+
     for (let i = 1; i <= segments.length; i++) {
         const prefix = segments.slice(0, i).join("/")
         const rawPrefix = rawPath.slice(0, prefix.length + rawOffset)
@@ -146,15 +150,17 @@ function findMissingStart(displayPath: string, rawPath: string): number {
         // so the incomplete prefixes before it always count as existing.
         if (isUncPath && !/^\/\/[^/]+\/[^/]+/.test(rawPrefix)) {
             lastExistingEnd = prefix.length
+            hasExistingPrefix = true
             continue
         }
 
         // An empty prefix is the filesystem root, which always exists.
         if (rawPrefix && !existsSync(rawPrefix)) {
-            return lastExistingEnd === 0 ? 0 : lastExistingEnd + 1
+            return hasExistingPrefix ? lastExistingEnd + 1 : 0
         }
 
         lastExistingEnd = prefix.length
+        hasExistingPrefix = true
     }
 
     return -1

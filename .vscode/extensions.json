@@ -1,0 +1,6 @@
+{
+    "recommendations": [
+        "hashicorp.terraform",
+        "jkillian.custom-local-formatters"
+    ]
+}

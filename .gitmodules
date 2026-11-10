@@ -1,0 +1,3 @@
+[submodule "Submodules/tf4fmt"]
+	path = Submodules/tf4fmt
+	url = git@github.com:horsenuggets/tf4fmt.git

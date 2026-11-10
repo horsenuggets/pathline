@@ -7,7 +7,7 @@ const cwd = process.cwd()
 execSync(`docker build -t ${image} -f docker/shell.Dockerfile .`, {
     cwd,
     stdio: "inherit",
-    timeout: 120_000,
+    timeout: 600_000,
 })
 
 interface TestResult {

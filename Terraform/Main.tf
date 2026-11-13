@@ -18,7 +18,7 @@ locals {
     repo_name = "pathline"
 
     required_checks = [
-        "Test",
+        "Test"
     ]
 }
 

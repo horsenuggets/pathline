@@ -33,9 +33,9 @@ provider "github" {
 locals {
     repo_name = "pathline"
 
-    # Must match the job `name:` fields in .github/workflows/ci.yml.
+    # Must match the job `name:` fields in .github/workflows/main.ci.yml.
     main_checks = [
-        "Test"
+        "test"
     ]
 }
 

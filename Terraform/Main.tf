@@ -1,5 +1,21 @@
+#
+# Main.tf
+#
+# Manages this repository's GitHub settings, including merge options and the ruleset that
+# protects main with the required CI checks. Run plans and applies from this folder with
+# GITHUB_TOKEN set, for example "GITHUB_TOKEN=$(gh auth token) terraform plan".
+#
+
 terraform {
     required_version = ">= 1.5"
+
+    # State lives in HCP Terraform. The organization comes from the TF_CLOUD_ORGANIZATION
+    # environment variable, and plans run locally.
+    cloud {
+        workspaces {
+            name = "pathline"
+        }
+    }
 
     required_providers {
         github = {
@@ -10,35 +26,28 @@ terraform {
 }
 
 provider "github" {
-    owner = "HorseNuggets"
-    # Authenticates via GITHUB_TOKEN environment variable
+    # Authenticates via the GITHUB_TOKEN environment variable.
+    owner = "horsenuggets"
 }
 
 locals {
     repo_name = "pathline"
 
-    required_checks = [
+    # Must match the job `name:` fields in .github/workflows/ci.yml.
+    main_checks = [
         "Test"
     ]
 }
 
-# Adopt the existing repository and ruleset instead of trying to create them. Import ids
-# must be literal strings on Terraform 1.5.
+# Adopt the existing repository instead of trying to create it. The id must be a literal
+# string on Terraform 1.5, so keep it in sync with local.repo_name.
 import {
-    to = github_repository.pathline
+    to = github_repository.repo
     id = "pathline"
 }
 
-import {
-    to = github_repository_ruleset.main
-    id = "pathline:15735746"
-}
-
-# Repository settings
-resource "github_repository" "pathline" {
+resource "github_repository" "repo" {
     name = local.repo_name
-    description = "Git-aware path display with worktree highlighting."
-    visibility = "public"
 
     has_issues = true
     has_projects = false
@@ -48,16 +57,23 @@ resource "github_repository" "pathline" {
     allow_merge_commit = false
     allow_rebase_merge = false
 
-    delete_branch_on_merge = true
-
     squash_merge_commit_title = "PR_TITLE"
     squash_merge_commit_message = "PR_BODY"
+
+    delete_branch_on_merge = true
+
+    lifecycle {
+        # Destroying this resource would delete the repository on GitHub.
+        prevent_destroy = true
+
+        # Managed in the GitHub UI, so applies don't overwrite them.
+        ignore_changes = [allow_auto_merge, description, topics, visibility]
+    }
 }
 
-# Branch protection for main
 resource "github_repository_ruleset" "main" {
     name = "main"
-    repository = github_repository.pathline.name
+    repository = github_repository.repo.name
     target = "branch"
     enforcement = "active"
 
@@ -69,19 +85,19 @@ resource "github_repository_ruleset" "main" {
     }
 
     rules {
+        non_fast_forward = true
+        deletion = true
+
         pull_request {
             required_approving_review_count = 0
             dismiss_stale_reviews_on_push = true
         }
 
-        copilot_code_review {
-            review_on_push = false
-            review_draft_pull_requests = false
-        }
-
         required_status_checks {
+            strict_required_status_checks_policy = true
+
             dynamic "required_check" {
-                for_each = local.required_checks
+                for_each = local.main_checks
                 content {
                     context = required_check.value
                     integration_id = 0
@@ -89,12 +105,4 @@ resource "github_repository_ruleset" "main" {
             }
         }
     }
-}
-
-# Each pull request gets a single Copilot review, so it runs at the deeper Balanced level.
-# The module warns on every plan if the setting drifts.
-module "copilot_review" {
-    source = "https://github.com/horsenuggets/luau-cicd/archive/a342a72d078bca2ff7f529bff4a68a68743b313a.tar.gz//luau-cicd-a342a72d078bca2ff7f529bff4a68a68743b313a/Terraform/Modules/CopilotReview"
-    repository = github_repository.pathline.full_name
-    review_effort = "balanced"
 }
